@@ -69,7 +69,7 @@ class HyperElasticity_opt(Problem):
         return [x_0_traction, y_0_traction, y_1_traction, z_0_traction, z_1_traction]
 
     def set_params(self, params):
-        self.mesh[0].points = params[0]
+        self.X_0 = self.mesh[0].points + params
 
 
 
