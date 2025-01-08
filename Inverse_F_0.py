@@ -229,8 +229,8 @@ problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_b
 original_cood = mesh.points
 internal_pressure = 2.0
 
-params = [original_cood]
-
+params = [np.zeros_like(problem.mesh[0].points)]
+print(params)
 print("HAHA")
 # Implicit differentiation wrapper
 fwd_pred = ad_wrapper(problem) 

@@ -70,8 +70,6 @@ class HyperElasticity_opt(Problem):
 
     def set_params(self, params):
         self.mesh[0].points = params[0]
-        # self.fe.points = params[0]
-        self.fes[0].points = params[0]
 
 
 
