@@ -69,7 +69,8 @@ class HyperElasticity_opt(Problem):
         return [x_0_traction, y_0_traction, y_1_traction, z_0_traction, z_1_traction]
 
     def set_params(self, params):
-        self.X_0 = self.mesh[0].points + params
+        # self.X_0 = self.mesh[0].points + params
+        self.X_0 = np.array(self.mesh[0].points) + params
 
 
 
@@ -229,7 +230,7 @@ problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_b
 original_cood = mesh.points
 internal_pressure = 2.0
 
-params = [np.zeros_like(problem.mesh[0].points)]
+params = np.zeros_like(problem.mesh[0].points)
 print(params)
 print("HAHA")
 # Implicit differentiation wrapper
