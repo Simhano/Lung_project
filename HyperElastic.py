@@ -34,7 +34,8 @@ class HyperElasticity(Problem):
 
         def first_PK_stress(u_grad):
             I = np.eye(self.dim)
-            F = u_grad + I
+            print(I)
+            F = u_grad + I    
             P = P_fn(F)
             return P
 
@@ -96,7 +97,7 @@ problem = HyperElasticity(mesh,
 
 # Solve the defined problem.    
 sol_list = solver(problem, solver_options={'petsc_solver': {}})
-print(sol_list)
+
 # Store the solution to local file.
 vtk_path = os.path.join(data_dir, f'vtk/u.vtu')
 save_sol(problem.fes[0], sol_list[0], vtk_path)

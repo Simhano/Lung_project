@@ -25,23 +25,31 @@ class HyperElasticity_opt(Problem):
 
     def get_tensor_map(self):
 
-        def psi(F):
+        def psi(F_tilde):
             E = 10.
             nu = 0.3
             mu = E / (2. * (1. + nu))
             kappa = E / (3. * (1. - 2. * nu))
-            J = np.linalg.det(F)
+            # J = np.linalg.det(F)
+            # Jinv = J**(-2. / 3.)
+            # I1 = np.trace(F.T @ F)
+
+            J = np.linalg.det(F_tilde)
             Jinv = J**(-2. / 3.)
-            I1 = np.trace(F.T @ F)
+            I1 = np.trace(F_tilde.T @ F_tilde)
+
             energy = (mu / 2.) * (Jinv * I1 - 3.) + (kappa / 2.) * (J - 1.)**2.
             return energy
 
         P_fn = jax.grad(psi)
 
-        def first_PK_stress(u_grad):
+        def first_PK_stress(u_grad,u_grads_0):
             I = np.eye(self.dim)
             F = u_grad + I
-            P = P_fn(F)
+            F_0 = u_grads_0 + I
+            F_0_inv = np.linalg.inv(F_0)
+            F_tilde = np.dot(F, F_0_inv)
+            P = P_fn(F_tilde)
             return P
         
         return first_PK_stress
@@ -231,20 +239,29 @@ original_cood = mesh.points
 internal_pressure = 2.0
 
 params = np.zeros_like(problem.mesh[0].points)
+params = np.ones_like(problem.mesh[0].points)
 print(params)
 print("HAHA")
 # Implicit differentiation wrapper
 fwd_pred = ad_wrapper(problem) 
 print("HOHO")
 sol_list = fwd_pred(params)
+print("sol_list")
 print(sol_list[0])
 # vtk_path = os.path.join(data_dir, f'vtk/u.vtu')
 # save_sol(problem.fe, sol_list[0], vtk_path)
 
+
+params_1 = np.ones_like(problem.mesh[0].points) * 0.1
+params_2 = np.ones_like(problem.mesh[0].points) * 20
+sol_list_1 = fwd_pred(params_1)
+sol_list_2 = fwd_pred(params_2)
+print("Solution difference (params_1 vs params_2):", np.linalg.norm(sol_list_1[0] - sol_list_2[0]))
+
 def test_fn(sol_list):
-    # print('test fun')
+    print('test fun')
     print(sol_list[0])
-    return np.sum((sol_list[0] - u_sol_2)**2)
+    return np.sum(sol_list[0] - u_sol_2) #np.sum((sol_list[0] - u_sol_2)**2)
 
 def composed_fn(params):
     # print()
@@ -253,6 +270,7 @@ def composed_fn(params):
 
 
 d_coord= jax.grad(composed_fn)(params)
+print("d_coord")
 print(d_coord[0].shape)
 print(d_coord)
 
