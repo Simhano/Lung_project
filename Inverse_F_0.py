@@ -50,6 +50,8 @@ class HyperElasticity_opt(Problem):
             F_0_inv = np.linalg.inv(F_0)
             F_tilde = np.dot(F, F_0_inv)
             P = P_fn(F_tilde)
+            print(u_grads_0)
+            self.U_grad_0_last = u_grads_0
             return P
         
         return first_PK_stress
@@ -243,7 +245,7 @@ params = np.ones_like(problem.mesh[0].points)
 print(params)
 print("HAHA")
 # Implicit differentiation wrapper
-fwd_pred = ad_wrapper(problem) 
+fwd_pred = ad_wrapper(problem)
 print("HOHO")
 sol_list = fwd_pred(params)
 print("sol_list")
