@@ -50,8 +50,10 @@ class HyperElasticity_opt(Problem):
             F_0_inv = np.linalg.inv(F_0)
             F_tilde = np.dot(F, F_0_inv)
             P = P_fn(F_tilde)
-
-
+            # jax.debug.print("u_grad: {}", u_grad)
+            # jax.debug.print("u_grads_0: {}", u_grads_0)
+            # jax.debug.print("F: {}", F)
+            # jax.debug.print("F_tilde: {}", F_tilde)
             return P
         
         return first_PK_stress
@@ -81,10 +83,6 @@ class HyperElasticity_opt(Problem):
     def set_params(self, params):
         # self.X_0 = self.mesh[0].points + params
         self.X_0 = np.array(self.mesh[0].points) + params
-
-
-
-
 
 class HyperElasticity(Problem):
     # The function 'get_tensor_map' overrides base class method. Generally, JAX-FEM 
@@ -208,24 +206,6 @@ location_fns = [traction_x_0, traction_y_0, traction_y_1, traction_z_0, traction
 
 internal_pressure_2 = 2.0
 
-problem_2 = HyperElasticity(mesh,
-                            vec=3,
-                            dim=3,
-                            ele_type=ele_type,
-                            dirichlet_bc_info=dirichlet_bc_info,
-                            location_fns=location_fns,
-                            internal_pressure=internal_pressure_2
-)
-
-sol_list_2 = solver(problem_2, solver_options={'petsc_solver': {}})
-
-# Store the solution
-u_sol_2 = sol_list_2[0]
-print(u_sol_2)
-# vtk_path_2 = os.path.join(data_dir, 'vtk', 'u_one_node.vtu')
-# os.makedirs(os.path.dirname(vtk_path_2), exist_ok=True)
-# save_sol(problem_2.fes[0], u_sol_2, vtk_path_2)
-
 # Create an instance of the problem.
 
 
@@ -247,32 +227,32 @@ print("HAHA")
 # Implicit differentiation wrapper
 fwd_pred = ad_wrapper(problem)
 print("HOHO")
-sol_list = fwd_pred(params)
-print("sol_list")
-print(sol_list[0])
+# sol_list = fwd_pred(params)
+# print("sol_list")
+# print(sol_list[0])
 # vtk_path = os.path.join(data_dir, f'vtk/u.vtu')
 # save_sol(problem.fe, sol_list[0], vtk_path)
 
 
-params_1 = np.ones_like(problem.mesh[0].points) * 0.1
+# params_1 = np.ones_like(problem.mesh[0].points) * 0.1
 params_2 = np.ones_like(problem.mesh[0].points) * 20
-sol_list_1 = fwd_pred(params_1)
+# sol_list_1 = fwd_pred(params_1)
 sol_list_2 = fwd_pred(params_2)
-print("Solution difference (params_1 vs params_2):", np.linalg.norm(sol_list_1[0] - sol_list_2[0]))
+# print("Solution difference (params_1 vs params_2):", np.linalg.norm(sol_list_1[0] - sol_list_2[0]))
 
-def test_fn(sol_list):
-    print('test fun')
-    print(sol_list[0])
-    return np.sum(sol_list[0] - u_sol_2) #np.sum((sol_list[0] - u_sol_2)**2)
+# def test_fn(sol_list):
+#     print('test fun')
+#     print(sol_list[0])
+#     return np.sum(sol_list[0] - u_sol_2) #np.sum((sol_list[0] - u_sol_2)**2)
 
-def composed_fn(params):
-    # print()
-    return test_fn(fwd_pred(params))
+# def composed_fn(params):
+#     # print()
+#     return test_fn(fwd_pred(params))
 
 
 
-d_coord= jax.grad(composed_fn)(params)
-print("d_coord")
-print(d_coord[0].shape)
-print(d_coord)
+# d_coord= jax.grad(composed_fn)(params)
+# print("d_coord")
+# print(d_coord[0].shape)
+# print(d_coord)
 
