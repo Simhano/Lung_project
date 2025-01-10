@@ -47,11 +47,11 @@ class HyperElasticity(Problem):
 
     def set_params(self, params):
         E, rho, scale_d = params
+        jax.debug.print("params: {}", params[0])
         self.E = E
         self.internal_vars = [rho]
         self.fe.dirichlet_bc_info[-1][-1] = get_dirichlet_bottom(scale_d)
         self.fe.update_Dirichlet_boundary_conditions(self.fe.dirichlet_bc_info)
-        print(E)
 
 
 # Specify mesh-related information (first-order hexahedron element).
@@ -104,6 +104,7 @@ vtk_path = os.path.join(data_dir, f'vtk/u.vtu')
 save_sol(problem.fe, sol_list[0], vtk_path)
 
 def test_fn(sol_list):
+    # jax.debug.print("test_fn: {}", np.sum(sol_list[0]**2))
     return np.sum(sol_list[0]**2)
 
 def composed_fn(params):
@@ -131,12 +132,12 @@ dscale_d_fd = (composed_fn(params_scale_d) - val)/(h*scale_d)
 dE, drho, dscale_d = jax.grad(composed_fn)(params)
 
 # Comparison
-print(f"\nDerivative comparison between automatic differentiation (AD) and finite difference (FD)")
-print(f"\ndrho[0, 0] = {drho[0, 0]}, drho_fd_00 = {drho_fd_00}")
-print(f"\ndscale_d = {dscale_d}, dscale_d_fd = {dscale_d_fd}")
+# print(f"\nDerivative comparison between automatic differentiation (AD) and finite difference (FD)")
+# print(f"\ndrho[0, 0] = {drho[0, 0]}, drho_fd_00 = {drho_fd_00}")
+# print(f"\ndscale_d = {dscale_d}, dscale_d_fd = {dscale_d_fd}")
 
-print(f"\ndE = {dE}, dE_fd = {dE_fd}, WRONG results! Please avoid gradients w.r.t self.E")
-print(f"This is due to the use of glob variable self.E, inside a jax jitted function.")
+# print(f"\ndE = {dE}, dE_fd = {dE_fd}, WRONG results! Please avoid gradients w.r.t self.E")
+# print(f"This is due to the use of glob variable self.E, inside a jax jitted function.")
 
 # TODO: show the following will cause an error
 # dE_E, _, _ = jax.grad(composed_fn)(params_E)

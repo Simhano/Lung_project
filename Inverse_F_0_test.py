@@ -83,7 +83,9 @@ class HyperElasticity_opt(Problem):
     def set_params(self, params):
         # self.X_0 = self.mesh[0].points + params
         self.X_0 = np.array(self.mesh[0].points) + params
+        self.params = params
 
+        
 class HyperElasticity(Problem):
     # The function 'get_tensor_map' overrides base class method. Generally, JAX-FEM 
     # solves -div(f(u_grad)) = b. Here, we define f(u_grad) = P. Notice how we first 
@@ -234,11 +236,14 @@ print("HOHO")
 # save_sol(problem.fe, sol_list[0], vtk_path)
 
 
-# params_1 = np.ones_like(problem.mesh[0].points) * 0.1
+params_1 = np.ones_like(problem.mesh[0].points) * 0.1
 params_2 = np.ones_like(problem.mesh[0].points) * 20
-# sol_list_1 = fwd_pred(params_1)
+
+params_1 = original_cood*0.03
+params_2 = original_cood*0.02
+sol_list_1 = fwd_pred(params_1)
 sol_list_2 = fwd_pred(params_2)
-# print("Solution difference (params_1 vs params_2):", np.linalg.norm(sol_list_1[0] - sol_list_2[0]))
+print("Solution difference (params_1 vs params_2):", np.linalg.norm(sol_list_1[0] - sol_list_2[0]))
 
 # def test_fn(sol_list):
 #     print('test fun')

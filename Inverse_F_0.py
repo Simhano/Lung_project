@@ -13,12 +13,20 @@ from jax_fem.solver import solver, ad_wrapper
 from jax_fem.utils import save_sol
 from jax_fem.generate_mesh import get_meshio_cell_type, Mesh, box_mesh_gmsh
 
-ABCC = 1
+
 # Define constitutive relationship.
 class HyperElasticity_opt(Problem):
     def __init__(self, *args,internal_pressure=2.0, **kwargs):
         self.internal_pressure = internal_pressure  # Make internal pressure variable
         super().__init__(*args, **kwargs)
+
+    def rerun_init(self, *args, internal_pressure=None, **kwargs):
+        """
+        Rerun the __init__ method with optional new parameters.
+        """
+        if internal_pressure is not None:
+            self.internal_pressure = internal_pressure
+        self.__init__(*args, internal_pressure=self.internal_pressure, **kwargs)
 
     def custom_init(self):
         self.fe = self.fes[0]
@@ -50,7 +58,7 @@ class HyperElasticity_opt(Problem):
             F_0_inv = np.linalg.inv(F_0)
             F_tilde = np.dot(F, F_0_inv)
             P = P_fn(F_tilde)
-
+            jax.debug.print("u_grads_0: {}", u_grads_0)
 
             return P
         
@@ -81,6 +89,9 @@ class HyperElasticity_opt(Problem):
     def set_params(self, params):
         # self.X_0 = self.mesh[0].points + params
         self.X_0 = np.array(self.mesh[0].points) + params
+        self.params = params
+        jax.debug.print("params in set_params: {}", params)
+        self.fe.update_Dirichlet_boundary_conditions(self.fe.dirichlet_bc_info)
 
 
 
@@ -242,6 +253,8 @@ internal_pressure = 2.0
 
 params = np.zeros_like(problem.mesh[0].points)
 params = np.ones_like(problem.mesh[0].points)
+
+params = np.array(original_cood) * 0.001
 print(params)
 print("HAHA")
 # Implicit differentiation wrapper
@@ -254,16 +267,20 @@ print(sol_list[0])
 # save_sol(problem.fe, sol_list[0], vtk_path)
 
 
-params_1 = np.ones_like(problem.mesh[0].points) * 0.1
-params_2 = np.ones_like(problem.mesh[0].points) * 20
+params_1 = np.ones_like(problem.mesh[0].points) * 0.01
+params_2 = np.ones_like(problem.mesh[0].points) * 0.02
+
+params_1 = original_cood * 0
+params_2 = original_cood*0.02
 sol_list_1 = fwd_pred(params_1)
 sol_list_2 = fwd_pred(params_2)
 print("Solution difference (params_1 vs params_2):", np.linalg.norm(sol_list_1[0] - sol_list_2[0]))
 
 def test_fn(sol_list):
     print('test fun')
-    print(sol_list[0])
-    return np.sum(sol_list[0] - u_sol_2) #np.sum((sol_list[0] - u_sol_2)**2)
+    # print(sol_list[0])
+    # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
+    return np.sum((sol_list[0] - u_sol_2)**2)*10000 #np.sum((sol_list[0] - u_sol_2)**2)
 
 def composed_fn(params):
     # print()
