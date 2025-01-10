@@ -281,7 +281,7 @@ def test_fn(sol_list):
     # print(sol_list[0])
     # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
     return np.sum((sol_list[0] - u_sol_2)**2)*10000 #np.sum((sol_list[0] - u_sol_2)**2)
-
+    #Set parameter without fixed nodes.
 def composed_fn(params):
     # print()
     return test_fn(fwd_pred(params))
