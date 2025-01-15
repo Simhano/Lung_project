@@ -57,6 +57,7 @@ meshio_mesh = box_mesh_gmsh(Nx=3,
                        ele_type=ele_type)
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
+# print(mesh.points)
 
 # Define boundary locations.
 def left(point):
@@ -66,6 +67,17 @@ def left(point):
 def right(point):
     return np.isclose(point[0], Lx, atol=1e-5)
 
+def top(point):
+    return np.isclose(point[2], Lz, atol=1e-5)
+
+def bottom(point):
+    return np.isclose(point[2], 0, atol=1e-5)
+
+def front(point):
+    return np.isclose(point[1], 0, atol=1e-5)
+
+def back(point):
+    return np.isclose(point[1], Ly, atol=1e-5)
 
 # Define Dirichlet boundary values.
 def zero_dirichlet_val(point):
@@ -82,9 +94,14 @@ def dirichlet_val_x3(point):
             (point[2] - 0.5) * np.cos(np.pi / 3.) - point[2]) / 2.
 
 
-dirichlet_bc_info = [[left] * 3 + [right] * 3, [0, 1, 2] * 2,
-                     [zero_dirichlet_val, dirichlet_val_x2, dirichlet_val_x3] +
-                     [zero_dirichlet_val] * 3]
+def dirichlet_val_xa(point):
+    return -1
+
+
+dirichlet_bc_info = [[left] * 3 + [right] * 3 + [top] + [bottom] + [front] + [back],  
+                     [0, 1, 2] * 2 + [2] * 2 + [1] * 2,
+                     [dirichlet_val_xa, zero_dirichlet_val, zero_dirichlet_val] +
+                     [zero_dirichlet_val] * 3 + [zero_dirichlet_val] * 4]
 
 
 # Create an instance of the problem.
@@ -99,5 +116,5 @@ problem = HyperElasticity(mesh,
 sol_list = solver(problem, solver_options={'petsc_solver': {}})
 
 # Store the solution to local file.
-vtk_path = os.path.join(data_dir, f'vtk/u.vtu')
+vtk_path = os.path.join(data_dir, f'vtk/u_hyper_test.vtu')
 save_sol(problem.fes[0], sol_list[0], vtk_path)
