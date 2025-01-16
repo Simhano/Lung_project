@@ -33,6 +33,7 @@ class HyperElasticity_opt(Problem):
         tol = 1e-8
         self.fixed_bc_mask = np.abs(mesh.points[:, 0] - Lx) < tol  # Use NumPy here
         self.non_fixed_indices = np.where(~self.fixed_bc_mask)[0]
+        self.np_points = np.array(self.mesh[0].points)
 
     def get_tensor_map(self):
 
@@ -91,16 +92,15 @@ class HyperElasticity_opt(Problem):
 
     def set_params(self, params):
         # self.X_0 = self.mesh[0].points + params
-
-        reconstructed_param = np.zeros_like(self.mesh[0].points)
-        reconstructed_param = reconstructed_param.at[self.non_fixed_indices].set(params)
+        reconstructed_param= self.np_points
+        filtered_reconstructed_param = reconstructed_param[~self.fixed_bc_mask]
+        filtered_reconstructed_param = filtered_reconstructed_param + (filtered_reconstructed_param * params)
+        reconstructed_param = reconstructed_param.at[self.non_fixed_indices].set(filtered_reconstructed_param)
         # reconstructed_param = reconstructed_param.at[~fixed_bc_mask].set(params)
 
-        self.X_0 = np.array(self.mesh[0].points) + reconstructed_param
+        self.X_0 = reconstructed_param
+        jax.debug.print("X_0: {}", reconstructed_param)
         self.params = reconstructed_param
-
-
-
 
 
 
@@ -269,7 +269,7 @@ fixed_bc_mask = np.abs(mesh.points[:,0] - Lx) < tol
 non_fixed_indices = np.where(~fixed_bc_mask)[0]
 params = params[non_fixed_indices]
 
-
+params = 0.0001
 print(params)
 print("HAHA")
 # Implicit differentiation wrapper
@@ -282,8 +282,8 @@ print(sol_list[0])
 # save_sol(problem.fe, sol_list[0], vtk_path)
 
 
-params_1 = params * 5
-params_2 = params * 2
+params_1 = 5 * 0.0001
+params_2 = 2 * 0.0001
 
 # params_1 = original_cood * 0
 # params_2 = original_cood*0.02
@@ -297,23 +297,24 @@ print(f"Cost for params_1: {cost_1}")
 print(f"Cost for params_2: {cost_2}")
 print(f"Cost difference: {cost_2 - cost_1}")
 
-cost = onp.zeros(100)
-for i in range(100):
-     parmas_for = params * i
-     sol_list = fwd_pred(parmas_for)
-     cost[i] = np.sum(((sol_list[0] - u_sol_2) / np.linalg.norm(u_sol_2))**2)
-     print('iter:')
-     print(i)
+params = 20 * 0.0001
 
-print(cost)
+def test_fn(sol_list):
+    print('test fun')
+    # print(sol_list[0])
+    jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
+    return np.sum(((sol_list[0] - u_sol_2) / np.linalg.norm(u_sol_2))**2)*1000 #np.sum((sol_list[0] - u_sol_2)**2)
+    #Set parameter without fixed nodes.
 
-plt.figure(figsize=(8, 6))
-plt.plot(range(100), cost, marker='o', linestyle='-', label='Cost vs i')
-plt.xlabel('i (iteration index)')
-plt.ylabel('Cost')
-plt.title('Cost vs i Graph')
-plt.legend()
-plt.grid(True)
-plt.show()
-plt.savefig('file_name.png')
+     
+def composed_fn(params):
+    return test_fn(fwd_pred(params)) #test_fn(fwd_pred(params))
+
+
+d_coord= jax.grad(composed_fn)(params)
+# jax.make_jaxpr(composed_fn)(params)
+print("d_coord")
+print(d_coord.shape)
+print(d_coord)
+
 

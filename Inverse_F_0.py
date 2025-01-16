@@ -33,7 +33,7 @@ class HyperElasticity_opt(Problem):
         tol = 1e-8
         self.fixed_bc_mask = np.abs(mesh.points[:, 0] - Lx) < tol  # Use NumPy here
         self.non_fixed_indices = np.where(~self.fixed_bc_mask)[0]
-
+        self.np_points = np.array(self.mesh[0].points)
     def get_tensor_map(self):
 
         def psi(F_tilde):
@@ -61,7 +61,7 @@ class HyperElasticity_opt(Problem):
             F_0_inv = np.linalg.inv(F_0)
             F_tilde = np.dot(F, F_0_inv)
             P = P_fn(F_tilde)
-            jax.debug.print("u_grads_0: {}", u_grads_0)
+            # jax.debug.print("u_grads_0: {}", u_grads_0)
 
             return P
         
@@ -92,11 +92,12 @@ class HyperElasticity_opt(Problem):
     def set_params(self, params):
         # self.X_0 = self.mesh[0].points + params
 
-        reconstructed_param = np.zeros_like(self.mesh[0].points)
+        reconstructed_param = np.zeros_like(self.np_points)
         reconstructed_param = reconstructed_param.at[self.non_fixed_indices].set(params)
         # reconstructed_param = reconstructed_param.at[~fixed_bc_mask].set(params)
 
-        self.X_0 = np.array(self.mesh[0].points) + reconstructed_param
+        self.X_0 = self.np_points + reconstructed_param
+        jax.debug.print("X_0: {}", self.X_0)
         self.params = reconstructed_param
 
 
@@ -313,8 +314,6 @@ def composed_fn(params):
 # jax.debug.print("Gradient of cost: {}", grad_val)
 
 
-jaxpr = jax.make_jaxpr(composed_fn)(params)
-print(jaxpr)
 
 d_coord= jax.grad(composed_fn)(params)
 # jax.make_jaxpr(composed_fn)(params)

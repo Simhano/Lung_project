@@ -47,7 +47,7 @@ class HyperElasticity(Problem):
 
     def set_params(self, params):
         E, rho, scale_d = params
-        jax.debug.print("params: {}", params[0])
+        jax.debug.print("params: {}", params[1])
         self.E = E
         self.internal_vars = [rho]
         self.fe.dirichlet_bc_info[-1][-1] = get_dirichlet_bottom(scale_d)
@@ -131,13 +131,14 @@ dscale_d_fd = (composed_fn(params_scale_d) - val)/(h*scale_d)
 # Derivative obtained by automatic differentiation
 dE, drho, dscale_d = jax.grad(composed_fn)(params)
 
+print('done')
 # Comparison
-# print(f"\nDerivative comparison between automatic differentiation (AD) and finite difference (FD)")
-# print(f"\ndrho[0, 0] = {drho[0, 0]}, drho_fd_00 = {drho_fd_00}")
-# print(f"\ndscale_d = {dscale_d}, dscale_d_fd = {dscale_d_fd}")
+print(f"\nDerivative comparison between automatic differentiation (AD) and finite difference (FD)")
+print(f"\ndrho[0, 0] = {drho[0, 0]}, drho_fd_00 = {drho_fd_00}")
+print(f"\ndscale_d = {dscale_d}, dscale_d_fd = {dscale_d_fd}")
 
-# print(f"\ndE = {dE}, dE_fd = {dE_fd}, WRONG results! Please avoid gradients w.r.t self.E")
-# print(f"This is due to the use of glob variable self.E, inside a jax jitted function.")
+print(f"\ndE = {dE}, dE_fd = {dE_fd}, WRONG results! Please avoid gradients w.r.t self.E")
+print(f"This is due to the use of glob variable self.E, inside a jax jitted function.")
 
 # TODO: show the following will cause an error
 # dE_E, _, _ = jax.grad(composed_fn)(params_E)
