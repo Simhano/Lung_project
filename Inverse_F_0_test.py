@@ -83,7 +83,7 @@ class HyperElasticity_opt(Problem):
     def set_params(self, params):
         # self.X_0 = self.mesh[0].points + params
         self.X_0 = np.array(self.mesh[0].points) + params
-        self.params = params
+        # self.params = params
 
         
 class HyperElasticity(Problem):

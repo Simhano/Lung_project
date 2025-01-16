@@ -98,6 +98,7 @@ class HyperElasticity_opt(Problem):
 
         self.X_0 = self.np_points + reconstructed_param
         jax.debug.print("X_0: {}", self.X_0)
+        # self.params
         self.params = reconstructed_param
 
 
@@ -302,7 +303,7 @@ def test_fn(sol_list):
     print('test fun')
     # print(sol_list[0])
     jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
-    return np.sum(((sol_list[0] - u_sol_2) / np.linalg.norm(u_sol_2))**2) #np.sum((sol_list[0] - u_sol_2)**2)
+    return np.sum(((sol_list[0] - u_sol_2))**2) #np.sum((sol_list[0] - u_sol_2)**2)
     #Set parameter without fixed nodes.
 
      
@@ -316,6 +317,11 @@ def composed_fn(params):
 
 
 d_coord= jax.grad(composed_fn)(params)
+
+for 11:
+    params_2 # update.
+    d_coord= jax.grad(composed_fn)(params)
+
 # jax.make_jaxpr(composed_fn)(params)
 print("d_coord")
 print(d_coord.shape)
@@ -323,17 +329,20 @@ print(d_coord)
 
 
 
-# def finite_diff_grad(fn, params, epsilon=1e-5):
-#     grads = np.zeros_like(params)
-#     for i in range(params.shape[0]):
-#         params_pos = params.at[i].add(epsilon)
-#         params_neg = params.at[i].add(-epsilon)
-#         grads = grads.at[i].set((fn(params_pos) - fn(params_neg)) / (2 * epsilon))
-#     return grads
+def finite_diff_grad(fn, params, epsilon=1e-6):
+    grads = np.zeros_like(params)
+    for i in range(3):
+        for j in range(params.shape[1]):
+            params_pos = params.at[i,j].add(epsilon)
+            params_neg = params.at[i,j].add(-epsilon)
+            grads = grads.at[i,j].set((fn(params_pos) - fn(params_neg)) / (2 * epsilon))
+    return grads
 
-# finite_grad = finite_diff_grad(lambda p: np.sum((fwd_pred(p)[0] - u_sol_2)**2), params)
-# print("Finite difference gradient:", finite_grad)
-
+finite_grad = finite_diff_grad(lambda p: np.sum((fwd_pred(p)[0] - u_sol_2)**2), params)
+print("Finite difference gradient:", finite_grad)
+print("d_coord")
+print(d_coord.shape)
+print(d_coord)
 
 
 # @jax.jit
