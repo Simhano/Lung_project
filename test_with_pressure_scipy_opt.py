@@ -238,7 +238,7 @@ mesh_points_onp = onp.array(mesh.points)  # Convert to standard NumPy array for 
 # Identify fixed nodes (nodes on the 'right' boundary)
 fixed_nodes = onp.isclose(mesh_points_onp[:, 0], Lx, atol=1e-5)
 non_fixed_nodes = ~fixed_nodes
-
+mesh_points_onp = onp.array(mesh.points) 
 # Data-set for optimization
 observed_positions_2 = mesh_points_onp + onp.array(u_sol_2)  # Convert to NumPy for computation
 observed_positions_3 = mesh_points_onp + onp.array(u_sol_3)

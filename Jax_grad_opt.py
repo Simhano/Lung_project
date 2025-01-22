@@ -257,8 +257,11 @@ print(u_sol_2)
 # scale_d = 1.
 # original_cood = np.copy(mesh.points) * 1.1
 
-original_cood = mesh.points + u_sol_2
-mesh.points = onp.array(mesh.points) + onp.array(u_sol_2)
+
+observed_positions_2 = mesh.points + u_sol_2
+original_cood = observed_positions_2
+
+mesh.points = onp.array(observed_positions_2)
 internal_pressure = 2.0
 
 
@@ -289,7 +292,7 @@ def test_fn(sol_list):
     print('test fun')
     # print(sol_list[0])
     # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
-    return 1000 * (np.sum(((sol_list[0] - u_sol_2))**2)/np.sum((u_sol_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
+    return 1000 * (np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2)/np.sum((observed_positions_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
     #Set parameter without fixed nodes.
 
      
@@ -304,9 +307,10 @@ print("d_coord")
 print(d_coord.shape)
 print(d_coord)
 
+
 params = np.array(original_cood) * 0
 params = params[non_fixed_indices]
-learning_rate = 0.1
+learning_rate = 1
 max_iterations = 500
 tolerance = 1e-6
 # current_mesh_dummy = mesh
