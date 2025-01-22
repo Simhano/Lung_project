@@ -5,7 +5,8 @@ import jax.numpy as np
 import os
 import glob
 import matplotlib.pyplot as plt
-
+import csv
+import time
 
 # Import JAX-FEM specific modules.
 from jax_fem.problem import Problem
@@ -97,7 +98,7 @@ class HyperElasticity_opt(Problem):
         # reconstructed_param = reconstructed_param.at[~fixed_bc_mask].set(params)
 
         self.X_0 = self.np_points + reconstructed_param
-        jax.debug.print("X_0: {}", self.X_0)
+        # jax.debug.print("X_0: {}", self.X_0)
         # self.params
         self.params = reconstructed_param
 
@@ -172,9 +173,9 @@ ele_type = 'HEX8'
 cell_type = get_meshio_cell_type(ele_type)
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 Lx, Ly, Lz = 100., 100., 100.
-meshio_mesh = box_mesh_gmsh(Nx=2,
-                            Ny=2,
-                            Nz=2,
+meshio_mesh = box_mesh_gmsh(Nx=3,
+                            Ny=3,
+                            Nz=3,
                             Lx=Lx,
                             Ly=Ly,
                             Lz=Lz,
@@ -250,22 +251,25 @@ print(u_sol_2)
 
 
 
-problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info,
-                          location_fns=location_fns, internal_pressure=internal_pressure_2)
+
 
 # mesh_points_modi = mesh.points 8.79406 -3.2669
 # scale_d = 1.
 # original_cood = np.copy(mesh.points) * 1.1
 
-original_cood = mesh.points
+original_cood = mesh.points + u_sol_2
+mesh.points = onp.array(mesh.points) + onp.array(u_sol_2)
 internal_pressure = 2.0
 
+
+problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info,
+                          location_fns=location_fns, internal_pressure=internal_pressure_2)
 # params = np.zeros_like(problem.mesh[0].points)
 # params = np.ones_like(problem.mesh[0].points)
 
 
 
-params = np.array(original_cood) * 0.0001
+params = np.array(original_cood) * 0 # 0.0001
 tol = 1e-8
 fixed_bc_mask = np.abs(mesh.points[:,0] - Lx) < tol
 non_fixed_indices = np.where(~fixed_bc_mask)[0]
@@ -278,90 +282,94 @@ print("HAHA")
 fwd_pred = ad_wrapper(problem)
 print("HOHO")
 sol_list = fwd_pred(params)
-print("sol_list")
-print(sol_list[0])
-# vtk_path = os.path.join(data_dir, f'vtk/u.vtu')
-# save_sol(problem.fe, sol_list[0], vtk_path)
-
-
-params_1 = params * 5
-params_2 = params * 2
-
-# params_1 = original_cood * 0
-# params_2 = original_cood*0.02
-sol_list_1 = fwd_pred(params_1)
-sol_list_2 = fwd_pred(params_2)
-print("Solution difference (params_1 vs params_2):", np.linalg.norm(sol_list_1[0] - sol_list_2[0]))
-
-cost_1 = np.sum((sol_list_1[0] - u_sol_2)**2)
-cost_2 = np.sum((sol_list_2[0] - u_sol_2)**2)
-print(f"Cost for params_1: {cost_1}")
-print(f"Cost for params_2: {cost_2}")
-print(f"Cost difference: {cost_2 - cost_1}")
+# print("sol_list")
+# print(sol_list[0])
 
 def test_fn(sol_list):
     print('test fun')
     # print(sol_list[0])
-    jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
-    return np.sum(((sol_list[0] - u_sol_2))**2) #np.sum((sol_list[0] - u_sol_2)**2)
+    # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
+    return 1000 * (np.sum(((sol_list[0] - u_sol_2))**2)/np.sum((u_sol_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
     #Set parameter without fixed nodes.
 
      
 def composed_fn(params):
     return np.sum(test_fn(fwd_pred(params))) #test_fn(fwd_pred(params))
 
-# grad_test_fn = jax.grad(lambda p: np.sum((fwd_pred(p)[0] - u_sol_2)**2))
-# grad_val = grad_test_fn(params)
-# jax.debug.print("Gradient of cost: {}", grad_val)
-
-
 
 d_coord= jax.grad(composed_fn)(params)
 
-# for 11:
-#     params_2 # update.
-#     d_coord= jax.grad(composed_fn)(params)
 
-# jax.make_jaxpr(composed_fn)(params)
 print("d_coord")
 print(d_coord.shape)
 print(d_coord)
 
+params = np.array(original_cood) * 0
+params = params[non_fixed_indices]
+learning_rate = 0.1
+max_iterations = 500
+tolerance = 1e-6
+# current_mesh_dummy = mesh
+current_mesh = mesh
 
+cost_history = []
 
-# def finite_diff_grad(fn, params, epsilon=1e-6):
-#     grads = np.zeros_like(params)
-#     for i in range(3):
-#         for j in range(params.shape[1]):
-#             params_pos = params.at[i,j].add(epsilon)
-#             params_neg = params.at[i,j].add(-epsilon)
-#             grads = grads.at[i,j].set((fn(params_pos) - fn(params_neg)) / (2 * epsilon))
-#     return grads
+start = time.time()
 
-# finite_grad = finite_diff_grad(lambda p: np.sum((fwd_pred(p)[0] - u_sol_2)**2), params)
-# print("Finite difference gradient:", finite_grad)
-# print("d_coord")
-# print(d_coord.shape)
-# print(d_coord)
+for iteration in range(max_iterations):
 
+    params = np.array(original_cood) * 0
+    params = params[non_fixed_indices]  
 
-# @jax.jit
-# def finite_diff_grad(fn, params, epsilon=1e-5):
-#     # Define a function to compute the finite difference for a single parameter index
-#     def single_grad(i):
-#         params_pos = params.at[i].add(epsilon)
-#         params_neg = params.at[i].add(-epsilon)
-#         return (fn(params_pos) - fn(params_neg)) / (2 * epsilon)
+    # Step 1: Compute gradient
+    d_coord = jax.grad(composed_fn)(params)
+
+    # grad_norm = np.linalg.norm(d_coord)
+    # if grad_norm > 1e-8:
+    #     d_coord = d_coord / grad_norm
+
+    params  = params - learning_rate * d_coord
+
+    updated_mesh_points = onp.copy(current_mesh.points)
+    updated_mesh_points[non_fixed_indices] = updated_mesh_points[non_fixed_indices] + params
+
+    # current_mesh = current_mesh_dummy
+    current_mesh.points = updated_mesh_points
+
+    problem = HyperElasticity_opt(current_mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info,
+                          location_fns=location_fns, internal_pressure=internal_pressure_2)
     
-#     # Apply the single_grad function to all indices using vmap
-#     indices = np.arange(params.shape[0])
-#     grads = jax.vmap(single_grad)(indices)
-#     return grads
+        # Step 5: Solve the FEM problem with the updated geometry
+    fwd_pred = ad_wrapper(problem)
+    sol_list = fwd_pred(params)
 
-# # Define your cost function
-# cost_fn = lambda p: np.sum((fwd_pred(p)[0] - u_sol_2)**2)
+    # Step 6: Compute the cost for convergence
+    current_cost = composed_fn(params)
+    cost_history.append([iteration, current_cost])  # Save iteration and cost
+    print(f"Iteration {iteration}: Cost = {current_cost}")
 
-# # Compute the finite difference gradient
-# finite_grad = finite_diff_grad(cost_fn, params)
+    if current_cost < 2:
+        learning_rate = 0.01
 
-# print("Finite difference gradient:", finite_grad)
+        # Check for convergence
+    if iteration > 0 and np.abs(prev_cost - current_cost) < tolerance:
+        print("Converged!")
+        break
+
+    prev_cost = current_cost
+
+# Save cost history to a CSV file
+with open("cost_history_learning_rate_0_dot_1_to_0_dot_0_1.csv", "w", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerow(["Iteration", "Cost"])  # Write header
+    writer.writerows(cost_history)         # Write data
+
+
+end = time.time()
+print('Run Time:')
+print((end - start)/60)
+
+u_sol_opt = sol_list[0]
+vtk_path_opt = os.path.join(data_dir, 'vtk', 'u_pressure_opt_with_JAX.vtu')
+os.makedirs(os.path.dirname(vtk_path_opt), exist_ok=True)
+save_sol(problem.fes[0], u_sol_opt, vtk_path_opt)
