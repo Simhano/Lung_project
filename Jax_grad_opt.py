@@ -318,6 +318,8 @@ current_mesh = mesh
 
 cost_history = []
 
+
+
 start = time.time()
 
 for iteration in range(max_iterations):
