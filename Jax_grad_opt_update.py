@@ -10,6 +10,7 @@ import time
 import gc
 import psutil
 import pandas as pd
+from jax.interpreters import xla
 
 # Import JAX-FEM specific modules.
 from jax_fem.problem import Problem
@@ -178,9 +179,9 @@ ele_type = 'HEX8'
 cell_type = get_meshio_cell_type(ele_type)
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 Lx, Ly, Lz = 100., 100., 100.
-meshio_mesh = box_mesh_gmsh(Nx=30,
-                            Ny=30,
-                            Nz=30,
+meshio_mesh = box_mesh_gmsh(Nx=5,
+                            Ny=5,
+                            Nz=5,
                             Lx=Lx,
                             Ly=Ly,
                             Lz=Lz,
@@ -291,8 +292,8 @@ print("HAHA")
 fwd_pred = ad_wrapper(problem)
 print("HOHO")
 sol_list = fwd_pred(params)
-# print("sol_list")
-# print(sol_list[0])
+print("sol_list")
+print(sol_list[0])
 
 def test_fn(sol_list):
     print('test fun')
@@ -300,7 +301,7 @@ def test_fn(sol_list):
     # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
     return np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2)  #/np.sum((observed_positions_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
     #Set parameter without fixed nodes.
-
+    #Normalize
      
 def composed_fn(params):
     return np.sum(test_fn(fwd_pred(params))) #test_fn(fwd_pred(params))
@@ -331,7 +332,7 @@ start = time.time()
 
 
 # Define the memory threshold (e.g., 80% of total memory)
-memory_threshold = 70.0  # In percentage -- 19456
+memory_threshold = 20.0  # In percentage -- 19456
 
 for iteration in range(max_iterations):
 
@@ -340,6 +341,8 @@ for iteration in range(max_iterations):
 
     # Step 1: Compute gradient
     d_coord = jax.grad(composed_fn)(params)
+    # What array is occupying the memory 
+
 
     # grad_norm = np.linalg.norm(d_coord)
     # if grad_norm > 1e-8:
@@ -384,6 +387,7 @@ for iteration in range(max_iterations):
 
     prev_cost = current_cost
 
+     #memory_threshold = 70.0  # In percentage -- 19456
 
     # # Check system memory usage
     memory_info = psutil.virtual_memory()
