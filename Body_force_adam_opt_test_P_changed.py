@@ -12,14 +12,12 @@ import psutil
 import pandas as pd
 from jax.interpreters import xla
 import meshio
-import bisect
-
+from jax.example_libraries import optimizers
 # Import JAX-FEM specific modules.
 from jax_fem.problem import Problem
 from jax_fem.solver import solver, ad_wrapper
 from jax_fem.utils import save_sol
 from jax_fem.generate_mesh import get_meshio_cell_type, Mesh, box_mesh_gmsh
-import jax.nn
 
 
 # Define constitutive relationship.
@@ -33,17 +31,24 @@ class HyperElasticity_opt(Problem):
         self.fe = self.fes[0]
         tol = 1e-8
         # self.fixed_bc_mask = np.abs(mesh.points[:, 1] - 0) < tol  # Use NumPy here
-        # self.fixed_bc_mask = mesh.points[:, 1] >= -18/1000
+        # self.fixed_bc_mask = mesh.points[:, 1] >= 51/1000
         self.non_fixed_indices = np.where(~self.fixed_bc_mask)[0]
         self.np_points = np.array(self.mesh[0].points)
         self.param_flag = 0
     def get_tensor_map(self):
 
         def psi(F_tilde):
+            # E = 1.9e4 
+            # nu = 0.483
+
             E = 2.842800754666559e+03
-            nu = 0.48
+            nu = 0.46
+
             mu = E / (2. * (1. + nu))
             kappa = E / (3. * (1. - 2. * nu))
+
+            # mu = 0.00635971757850452e6
+            # kappa = 0.315865973065724e6* 0.5
             # J = np.linalg.det(F)
             # Jinv = J**(-2. / 3.)
             # I1 = np.trace(F.T @ F)
@@ -57,16 +62,7 @@ class HyperElasticity_opt(Problem):
             I1 = np.trace(F_tilde.T @ F_tilde)
 
             energy = (mu / 2.) * (Jinv * I1 - 3.) + (kappa / 2.) * (J - 1.)**2.
-
-
-            # Add penalty if J falls below a threshold (to discourage inversion)
-            threshold = 0.5
-            penalty_weight = 1e3
-
-            # Using a smooth approximation: softplus gives a smooth penalty
-            penalty = penalty_weight * jax.nn.softplus(threshold - J)
             return energy
-            # return energy + penalty
 
         P_fn = jax.grad(psi)
 
@@ -90,8 +86,8 @@ class HyperElasticity_opt(Problem):
             density = self.density  # kg/m³, breast tissue density
             g = 9.81  # m/s², gravitational acceleration
             # val = np.array([0.0, -density*g, 0.0])
-            # val = np.array([0.0, 0.0, density*g])
             val = np.array([0.0, density*g, 0.0])
+            # val = np.array([0.0, 0.0, density*g])
             # jax.debug.print("density: {}", density)
             return val
         return mass_map
@@ -129,9 +125,15 @@ class HyperElasticity(Problem):
 
         def psi(F):
             E = 2.842800754666559e+03
-            nu = 0.48
+            nu = 0.46
             mu = E / (2. * (1. + nu))
             kappa = E / (3. * (1. - 2. * nu))
+
+            # jax.debug.print("mu: {}", mu)
+            # jax.debug.print("kappa: {}", kappa)
+            # mu = 0.00635971757850452e6
+            # kappa = 0.315865973065724e6 * 0.5
+
             J = np.linalg.det(F)
             Jinv = J**(-2. / 3.)
             I1 = np.trace(F.T @ F)
@@ -154,20 +156,58 @@ class HyperElasticity(Problem):
             density = 942.8238474  # kg/m³, breast tissue density
             g = 9.81  # m/s², gravitational acceleration
             # val = np.array([0.0, -density*g, 0.0])
-            # val = np.array([0.0, 0.0, density*g])
             val = np.array([0.0, density*g, 0.0])
+            # val = np.array([0.0, 0.0, density*g])
+            return val
+        return mass_map
+
+class HyperElasticity_inv(Problem):
+    # The function 'get_tensor_map' overrides base class method. Generally, JAX-FEM 
+    # solves -div(f(u_grad)) = b. Here, we define f(u_grad) = P. Notice how we first 
+    # define 'psi' (representing W), and then use automatic differentiation (jax.grad) 
+    # to obtain the 'P_fn' function.
+
+    def get_tensor_map(self):
+
+        def psi(F):
+            E = 2.842800754666559e+03
+            nu = 0.46
+            mu = E / (2. * (1. + nu))
+            kappa = E / (3. * (1. - 2. * nu))
+
+            # mu = 0.00635971757850452e6
+            # kappa = 0.315865973065724e6 * 0.5
+
+            J = np.linalg.det(F)
+            Jinv = J**(-2. / 3.)
+            I1 = np.trace(F.T @ F)
+            energy = (mu / 2.) * (Jinv * I1 - 3.) + (kappa / 2.) * (J - 1.)**2.
+            return energy
+
+        P_fn = jax.grad(psi)
+
+        def first_PK_stress(u_grad):
+            I = np.eye(self.dim)
+            F = u_grad + I
+            P = P_fn(F)
+            return P
+        
+        return first_PK_stress
+
+    # Define the source term b
+    def get_mass_map(self):
+        def mass_map(u, x):
+            density = 942.8238474  # kg/m³, breast tissue density
+            g = 9.81  # m/s², gravitational acceleration
+            # val = np.array([0.0, -density*g, 0.0])
+            val = np.array([0.0, -density*g, 0.0])
+            # val = np.array([0.0, 0.0, -density*g])
             return val
         return mass_map
 
 
-
 case_indicator = 166
-# method_indicator = "gradually_increase_mass_hmax_20_nu_48_"
-
-method_indicator = "gradually_increase_mass_hmax_20_nu_48_location_45_strain" #
-
-cut_loc = 45
-# method_indicator = "gradually_increase_mass_hmax_20_nu_48_" ##
+method_indicator = "negative_force_inital_with_adam_hmax_20_nu_46_location_0_"
 
 
 
@@ -190,8 +230,8 @@ data_dir = os.path.join(os.path.dirname(__file__), 'data')
 
 # meshio_mesh = meshio.read("hemi_tet4_fine.inp")
 # mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
-# print(mesh.points)
 
+# print(mesh.points)
 ########################################## MESH ############################################################
 ########################################## MESH ############################################################
 ########################################## MESH ############################################################
@@ -208,7 +248,7 @@ print("Cell types found:", mesh.cells_dict.keys())
 volume_type = "tetra"      # or "hexahedron", "wedge", etc. depending on your mesh
 
 if volume_type not in mesh.cells_dict:
-    raise ValueError(f"No {volume_type} cells found in this mesh.")
+   raise ValueError(f"No {volume_type} cells found in this mesh.")
 
 # Filter out only tetra cells
 volume_cells = mesh.cells_dict[volume_type]
@@ -233,11 +273,15 @@ volume_only_mesh.points = volume_only_mesh.points/1000
 
 mesh = Mesh(volume_only_mesh.points, volume_only_mesh.cells_dict[volume_type])
 
-cells = volume_only_mesh.cells_dict[volume_type]
 ########################################## MESH ############################################################
 ########################################## MESH ############################################################
 ########################################## MESH ############################################################
 ########################################## MESH ############################################################
+
+
+
+
+
 
 
 
@@ -249,11 +293,11 @@ def left(point):
 # def y_0(point):
 #     # print(np.isclose(point[0], Lx, atol=1e-5))
 #     return np.isclose(point[1], 0, atol=1e-5)
-y_0_point = np.where(mesh.points[:,1]>=cut_loc/1000)[0]
+
+y_0_point = np.where(mesh.points[:,1]>=0/1000)[0]
     
 def y_0(point, ind):
     return np.isin(ind, y_0_point) 
-
 
 # Define Dirichlet boundary values.
 def zero_dirichlet_val(point):
@@ -284,20 +328,35 @@ save_sol(problem_2.fes[0], u_sol_2, vtk_path_2)
 # Create an instance of the problem.
 
 
+
+
+
 # mesh_points_modi = mesh.points 8.79406 -3.2669
 # scale_d = 1.
 # original_cood = np.copy(mesh.points) * 1.1
 
 
-observed_positions_2 = mesh.points 
 observed_positions_2 = mesh.points
 undeformed_coord = mesh.points
 original_cood = observed_positions_2
 
-
-
-
 mesh.points = onp.array(observed_positions_2)
+problem_inv = HyperElasticity_inv(mesh,
+                            vec=3,
+                            dim=3,
+                            ele_type=ele_type,
+                            dirichlet_bc_info=dirichlet_bc_info
+)
+
+sol_list_inv = solver(problem_inv, solver_options={'petsc_solver': {}})
+u_sol_inv = sol_list_inv[0]
+part_indicator = '_intial_guess.vtk'
+vtk_path_2 = os.path.join(data_dir, 'vtk', f"{method_indicator}{case_indicator}{part_indicator}")
+os.makedirs(os.path.dirname(vtk_path_2), exist_ok=True)
+save_sol(problem_inv.fes[0], u_sol_inv, vtk_path_2)
+
+init_guess = mesh.points + u_sol_inv
+mesh.points = onp.array(init_guess)
 
 # better initial guess
 # mesh.points = onp.array((observed_positions_2 + undeformed_coord)/2)
@@ -308,47 +367,37 @@ density_target = 1000
 params = np.array(original_cood) * 0 # 0.0001
 tol = 1e-8
 # fixed_bc_mask = np.abs(mesh.points[:,1] - 0) < tol
-fixed_bc_mask = mesh.points[:, 1] >= cut_loc/1000
+fixed_bc_mask = mesh.points[:, 1] >= 51/1000
 non_fixed_indices = np.where(~fixed_bc_mask)[0]
 params = params[non_fixed_indices]
 
-problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=942.8238474, fixed_bc_mask=fixed_bc_mask)
+problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=1000, fixed_bc_mask=fixed_bc_mask)
 # params = np.zeros_like(problem.mesh[0].points)
 # params = np.ones_like(problem.mesh[0].points)
-
-
-
-
-
 
 print(params)
 print("HAHA")
 # Implicit differentiation wrapper
 fwd_pred = ad_wrapper(problem)
 print("HOHO")
-
-
-# sol_list = fwd_pred(params)
-
-
+sol_list = fwd_pred(params)
 # print("sol_list")
 # print(sol_list[0])
 
-def test_fn(sol_list, penalty):
+def test_fn(sol_list):
     print('test fun')
-    
+    # print(sol_list[0])
     # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
-    data_error =  np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2)/np.sum((observed_positions_2)**2) #/np.sum((observed_positions_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
-    # capped_penalty = np.minimum(1*penalty, 100 * data_error)
-    capped_penalty = 10*penalty
-    # jax.debug.print("capped_penalty: {}", capped_penalty)
-    return data_error + capped_penalty
+    return np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2) / np.sum((observed_positions_2)**2) #np.sum((sol_list[0] - u_sol_2)**2)
     #Set parameter without fixed nodes.
     #Normalize
      
 def composed_fn(params):
-    Sol, penalty = fwd_pred(params)
-    return np.sum(test_fn(Sol, penalty)) #test_fn(fwd_pred(params))
+    Sol = fwd_pred(params)
+    if Sol == None:
+        return None
+    else:
+        return np.sum(test_fn(Sol)) #test_fn(fwd_pred(params))
 
 
 d_coord= jax.grad(composed_fn)(params)
@@ -365,24 +414,22 @@ observed_positions_2_non_fixed = observed_positions_2[non_fixed_indices]
 start_learning_rate = 0.001
 learning_rate = start_learning_rate
 max_iterations = 500
-tolerance_last = 1e-3
-tolerance_relax = 1e-3
+tolerance = 1e-3
 # current_mesh_dummy = mesh
 current_mesh = mesh
 relax_flag = 0
-# original_density_arr = [50 ,100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 942.8238474]
-original_density_arr = [150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 942.8238474]
-# original_density_arr = onp.arange(50, 943, 1)
-# original_density_arr = [200, 400, 600, 800, 942.8238474]
-# original_density_arr = [200, 600, 800, 1000]
-density_arr = original_density_arr
+cost_history = []
+density_init = 300
+density_target = 1000 
+density_arr = [200, 300, 400, 500, 600, 700, 750, 800, 850, 900, 950, 1000]
+# density_arr = [800, 850, 942.8238474]
+density_arr = [942.8238474]
+current_density = 942.8238474
+density_gap = 200
 step_roll_back_flag = 0
 negative_J_count = 0
-fail_count = 0
-last_5_costs = []
-cost_history = []  # reinitialize if you want per-density cost history
-problem = HyperElasticity_opt(current_mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=density_arr[0], fixed_bc_mask=fixed_bc_mask)
-fail_count_for_count = 0
+problem = HyperElasticity_opt(current_mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=density_init, fixed_bc_mask=fixed_bc_mask)
+
 fwd_pred = ad_wrapper(problem)
 start = time.time()
 sol_list = fwd_pred(params)
@@ -404,138 +451,68 @@ print("//////////////////////////")
 print("//////////////////////////")
 print("//////////////////////////")
 print("//////////////////////////")
+i_vtk_count = 0
 
-def tet_signed_volume(v0, v1, v2, v3):
-    # Compute the signed volume of a tetrahedron.
-    return onp.linalg.det(onp.column_stack((v1 - v0, v2 - v0, v3 - v0))) / 6.0
-
-def refine_interval(density_arr, d_fail, original_density_arr, fail_count):
-    """
-    Refine the interval (between two original endpoints) in which d_fail lies.
-    
-    Rather than partially preserving the old array, this version replaces the entire
-    interval [d_low, d_high] with a new, uniformly spaced set of points.
-    
-    The number of refined points is given by:
-         n_point = 2**(fail_count) + 1
-         
-    Examples (assuming original_density_arr = [200, 400, 600, 800, 1000]):
-      - If density_arr is [200,400,600,800,1000] and d_fail is 800 with fail_count = 1,
-        then new_points = [600, 700, 800] and the updated density_arr becomes 
-        [200, 400, 600, 700, 800, 1000].
-        
-      - If later density_arr is [200,400,600,700,800,1000] and d_fail is 700 with fail_count = 2,
-        then new_points = [600, 650, 700, 750, 800] and the updated density_arr becomes 
-        [200, 400, 600, 650, 700, 750, 800, 1000].
-        
-      - And so on.
-    """
-    # Identify the original endpoints that bracket d_fail.
-    for i in range(len(original_density_arr) - 1):
-        if original_density_arr[i] <= d_fail <= original_density_arr[i+1]:
-            d_low = original_density_arr[i]
-            d_high = original_density_arr[i+1]
-            break
-    else:
-        raise ValueError(f"d_fail {d_fail} is not between any endpoints in original_density_arr.")
-    
-    # Find the indices in density_arr corresponding to d_low and d_high.
-    try:
-        start_index = density_arr.index(d_low)
-        end_index = density_arr.index(d_high)
-    except ValueError:
-        raise ValueError("The endpoints {} or {} are not in the current density_arr."
-                         .format(d_low, d_high))
-    
-    # Calculate the number of points for uniform refinement.
-    n_point = 2**(fail_count) + 1  # For fail_count=1, n_point=3; for 2, n_point=5; etc.
-    # Generate the new uniformly spaced points.
-    new_points = onp.linspace(d_low, d_high, n_point).tolist()
-    
-    # Replace the entire interval [d_low, d_high] with the refined points.
-    new_density_arr = density_arr[:start_index] + new_points + density_arr[end_index+1:]
-    return new_density_arr
-
-# Open CSV file for writing cost history in real-time
 part_indicator = '_cost_history_learning_rate.csv'
 csv_file_path = f"{method_indicator}{case_indicator}{part_indicator}"
 
-mesh_for_cal = mesh
+step_size_current=0.00001
 
 with open(csv_file_path, "w", newline="") as file:
     writer = csv.writer(file)
-    writer.writerow(["Iteration", "Cost", "learning_rate", "Density", "penalty", "avg_volume", "min_volume"])  # Write header
+    writer.writerow(["Iteration", "Cost", "learning_rate", "Density"])  # Write header
 
-    # We use a while loop over the density list so that we can insert new values if needed.
-    i = 0  # index for density_arr
-    i_vtk_count = 0
-    while i < len(density_arr):
-        current_density = density_arr[i]
-        problem.density = current_density
-        print(f"====================\nCurrent density = {current_density}\n====================")
-        
-        # If we are not coming from a rollback, then store the current parameters 
-        # (and also the previous density for the purpose of computing the new density if needed).
-        # (Note: for i == 0 there is no previous density, so we simply keep the current one.)
-        if step_roll_back_flag == 0:
-            prev_param = params.copy()  # make sure to copy if params is a mutable array
+    for BC_i in range(len(density_arr)):
+        problem.density = density_arr[BC_i]
 
-        # Reset the rollback flag for this density level.
-        step_roll_back_flag = 0
+        opt_init, opt_update, get_params = optimizers.adam(step_size=step_size_current)
+        opt_state = opt_init(params)
 
-        # -------------------------------
-        # Inner optimization loop for current density
-        # -------------------------------
-        
         for iteration in range(max_iterations):
+
+            # params = np.zeros_like(original_cood)
+            # params = params * 0
+            prev_opt_state = opt_state
+            # Step 1: Compute gradient
             try:
-                # Compute gradient and normalize if necessary.
-                d_coord = jax.grad(composed_fn)(params)
-                grad_norm = np.linalg.norm(d_coord)
-                if grad_norm > 1e-8:
-                    d_coord = d_coord / grad_norm
-
-                # Update parameters
-                params = params - learning_rate * d_coord
-
-                # Solve FEM problem
-    
-                sol_list, penalty = fwd_pred(params)
+                grad_val = jax.grad(composed_fn)(get_params(opt_state))
+                opt_state = opt_update(iteration, grad_val, opt_state)
+                params = get_params(opt_state)
+                sol_list = fwd_pred(params)
                 GGG = 0
             except:
                 GGG = 1
 
-
-            # if sol_list is None:
             if GGG == 1:
-
+                print("J < 0!!!")
+                print("J < 0!!!")
+                # print("J < 0!!!")
+                # print("J < 0!!!")
+                # print("J < 0!!!")
                 # Roll back this step: undo the last parameter update
-                params = params + learning_rate * d_coord
+                opt_state = prev_opt_state
+                params = get_params(opt_state)
                 # Reduce learning rate to help convergence next time
-                learning_rate *= 0.5
+                # learning_rate *= 0.5
+                step_size_current *= 0.5
+
+                opt_init, opt_update, get_params = optimizers.adam(step_size=step_size_current)
+                opt_state = opt_init(params)
+
                 negative_J_count += 1
+                writer.writerow([iteration, 0, step_size_current, current_density])  # Save immediately
+                file.flush()  # Ensure data is written to disk 
+                # relax_flag = relax_flag + 1
 
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print("Encountered negative J (or invalid FEM result)!")
-                print(f"Iteration {iteration}: learning_rate = {learning_rate}, current_density = {current_density}, penalty = {penalty}")
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print('===================================================================================================================')
+                # if relax_flag > 3:
+                #     # params = params + observed_positions_2_non_fixed * 0.01
+                #     print('Relax Relax Relax Relax')
+                #     print('Relax Relax Relax Relax')
+                #     print('Relax Relax Relax Relax')
+                #     print('Relax Relax Relax Relax')
 
-                mesh_for_cal.points[non_fixed_indices] = current_mesh.points[non_fixed_indices] + params
-                volumes = [tet_signed_volume(*mesh_for_cal.points[cell]) for cell in cells]
-                avg_volume = onp.mean(volumes)
-                min_volume = onp.min(volumes)
-                print("Average volume:", avg_volume)
-                print("Minimum volume:", min_volume)
-
-                writer.writerow([iteration, 0, learning_rate, current_density,penalty, avg_volume, min_volume])  # Save immediately
-                file.flush()  # Ensure data is written to disk
             else:
+
                 u_sol = np.zeros_like(sol_list[0])
 
                 np_points_temp = np.array(problem.mesh[0].points)
@@ -551,68 +528,50 @@ with open(csv_file_path, "w", newline="") as file:
                 i_vtk_count = i_vtk_count + 1
 
 
-
-
                 negative_J_count = 0
-                # Optionally increase the learning rate slowly
-                learning_rate *= 1.05
+                learning_rate = learning_rate * 1.05
 
-                # Compute cost for convergence checking
-                current_cost = np.sum((((sol_list[0] + problem.mesh[0].points) - observed_positions_2))**2)/np.sum((observed_positions_2)**2)
-                capped_penalty = 10*penalty
-                # capped_penalty = np.minimum(1*penalty, 100 * current_cost)
-                # jax.debug.print("capped_penalty: {}", capped_penalty)
-                print("capped_penalty:", capped_penalty)
-                # capped_penalty = np.minimum(penalty, 100 * current_cost)
-
-                current_cost = current_cost + capped_penalty
-                mesh_for_cal.points[non_fixed_indices] = current_mesh.points[non_fixed_indices] + params
-                volumes = [tet_signed_volume(*mesh_for_cal.points[cell]) for cell in cells]
-                avg_volume = onp.mean(volumes)
-                min_volume = onp.min(volumes)
-                print("Average volume:", avg_volume)
-                print("Minimum volume:", min_volume)
-
-                writer.writerow([iteration, current_cost, learning_rate, current_density, penalty, avg_volume, min_volume])  # Save immediately
+            #####
+                # u_sol_opt = sol_list[0]
+                # vtk_path_opt = os.path.join(data_dir, 'vtk', 'u_pressure_opt_with_JAX_body_hemi_during_Iteration.vtu')
+                # os.makedirs(os.path.dirname(vtk_path_opt), exist_ok=True)
+                # save_sol(problem.fes[0], u_sol_opt, vtk_path_opt)
+            #######
+                # Step 6: Compute the cost for convergence
+                current_cost = np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2)
+                writer.writerow([iteration, current_cost, step_size_current, current_density])  # Save immediately
                 file.flush()  # Ensure data is written to disk
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-            
-                print(f"Iteration {iteration}: Cost = {current_cost}, learning_rate = {learning_rate}, current_density = {current_density}, penalty = {penalty}")
+                # print("//////////////////////////")
+                # print("//////////////////////////")
+                print("//////////////////////////")
+                print("//////////////////////////")
+                print(f"Iteration {iteration}: Cost = {current_cost}")
+                # print("//////////////////////////")
+                # print("//////////////////////////")
+                print("//////////////////////////")
+                print("//////////////////////////")
+                print('learning_rate')
+                print(learning_rate)
+                print("density")
+                print(density_arr[BC_i])
+                print("//////////////////////////")
+                print("//////////////////////////")
+                # print("//////////////////////////")
+                # print("//////////////////////////")
+                # if current_cost < 2:
+                #     learning_rate = 0.01
 
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-                print('===================================================================================================================')
-
-                # Convergence check (you can adjust this condition as needed)
-                if current_density == density_arr[-1]:
-                    if iteration > 0 and np.abs(current_cost) < tolerance_last: 
-                        print("Converged at target density!")
-                        break
-                elif iteration > 0 and np.abs(current_cost) < tolerance_relax:
-                    if current_density in original_density_arr:
-                        fail_count = 0
-                    print("Converged at this density!")
+                    # Check for convergence
+                # if iteration > 0 and np.abs(prev_cost - current_cost) < tolerance:
+                if iteration > 0 and np.abs(current_cost) < tolerance:
+                    print("Converged!")
                     break
 
-                # Check if we have a plateau or repeated negative J events
-                if iteration > 6:
-                    last_5_costs = [row[1] for row in cost_history[-5:]]
-                    last_5_costs = np.array(last_5_costs)
-                    if np.std(last_5_costs) < 1e-5:
-                        print("Optimization stalled or negative J occurred several times!")
-                        step_roll_back_flag = 1
-                        break
+                # prev_cost = current_cost
 
-            if negative_J_count > 7:
-                print("Optimization stalled or negative J occurred several times!")
-                step_roll_back_flag = 1
-                negative_J_count = 0
-                break
-            
+                #memory_threshold = 70.0  # In percentage -- 19456
+
+
             # # Check system memory usage
             memory_info = psutil.virtual_memory()
             if memory_info.percent > memory_threshold:
@@ -621,40 +580,15 @@ with open(csv_file_path, "w", newline="") as file:
                 gc.collect()
 
 
-        # -------------------------------
-        # End of inner optimization loop
-        # -------------------------------
-
-        if step_roll_back_flag:
-            fail_count = fail_count + 1
-            fail_count_for_count = fail_count_for_count + 1
-            # Roll back parameters to the last successful state
-            params = prev_param.copy()
-            # Compute new density to try: halfway between the previous successful density and the current one.
-            new_density = refine_interval(density_arr, current_density, original_density_arr, fail_count)
-            i = new_density.index(current_density) - 1
-            step_roll_back_flag = 0
-            learning_rate = 0.0001
-            density_arr = new_density
-            continue  # do not advance i
-        else:
-            # Optimization at the current density was successful.
-            print(f"Density {current_density} optimization successful.")
-            i += 1  # move on to the next density level
-
-    print("Optimization over all density levels completed.")
 
 
+# Save cost history to a CSV file
+part_indicator = '_cost_history_learning_rate.csv'
 
-
-
-# # Save cost history to a CSV file
-# part_indicator = '_cost_history_learning_rate.csv'
-
-# with open(f"{method_indicator}{case_indicator}{part_indicator}", "w", newline="") as file:
-#     writer = csv.writer(file)
-#     writer.writerow(["Iteration", "Cost", 'learning_rate' , 'Density'])  # Write header
-#     writer.writerows(cost_history)         # Write data
+with open(f"{method_indicator}{case_indicator}{part_indicator}", "w", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerow(["Iteration", "Cost"])  # Write header
+    writer.writerows(cost_history)         # Write data
 
 
 end = time.time()
@@ -691,7 +625,6 @@ optimized_df = pd.DataFrame(current_mesh.points, columns=["X", "Y", "Z"])
 # Save to CSV files
 addr = '/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_JAX/'
 
-
 part_indicator = '_undeformed_coordinates.csv'
 undeformed_df.to_csv(f"{addr}{method_indicator}{case_indicator}{part_indicator}", index=False)
 
@@ -700,6 +633,3 @@ initial_gauss_df.to_csv(f"{addr}{method_indicator}{case_indicator}{part_indicato
 
 part_indicator = '_optimized_coordinates.csv'
 optimized_df.to_csv(f"{addr}{method_indicator}{case_indicator}{part_indicator}", index=False)
-
-print('fail_count_for_count')
-print(fail_count_for_count)

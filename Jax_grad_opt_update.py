@@ -39,6 +39,7 @@ class HyperElasticity_opt(Problem):
         self.fixed_bc_mask = np.abs(mesh.points[:, 0] - Lx) < tol  # Use NumPy here
         self.non_fixed_indices = np.where(~self.fixed_bc_mask)[0]
         self.np_points = np.array(self.mesh[0].points)
+        self.param_flag = 0
     def get_tensor_map(self):
 
         def psi(F_tilde):
@@ -179,9 +180,9 @@ ele_type = 'HEX8'
 cell_type = get_meshio_cell_type(ele_type)
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 Lx, Ly, Lz = 100., 100., 100.
-meshio_mesh = box_mesh_gmsh(Nx=5,
-                            Ny=5,
-                            Nz=5,
+meshio_mesh = box_mesh_gmsh(Nx=3,
+                            Ny=3,
+                            Nz=3,
                             Lx=Lx,
                             Ly=Ly,
                             Lz=Lz,
@@ -400,7 +401,7 @@ for iteration in range(max_iterations):
 
 
 # Save cost history to a CSV file
-with open("cost_history_learning_rate_30by.csv", "w", newline="") as file:
+with open("cost_history_learning_rate_3by.csv", "w", newline="") as file:
     writer = csv.writer(file)
     writer.writerow(["Iteration", "Cost"])  # Write header
     writer.writerows(cost_history)         # Write data
@@ -411,7 +412,7 @@ print('Run Time:')
 print((end - start)/60)
 
 u_sol_opt = sol_list[0]
-vtk_path_opt = os.path.join(data_dir, 'vtk', 'u_pressure_opt_with_JAX_30by.vtu')
+vtk_path_opt = os.path.join(data_dir, 'vtk', 'u_pressure_opt_with_JAX_3by.vtu')
 os.makedirs(os.path.dirname(vtk_path_opt), exist_ok=True)
 save_sol(problem.fes[0], u_sol_opt, vtk_path_opt)
 
@@ -422,6 +423,6 @@ optimized_df = pd.DataFrame(current_mesh.points, columns=["X", "Y", "Z"])
 
 
 # Save to CSV files
-undeformed_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/undeformed_coordinates_JAX_30.csv", index=False)
-initial_gauss_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/initial_gauss_coordinates_30_big.csv", index=False)
-optimized_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/optimized_coordinates_JAX_30.csv", index=False)
+undeformed_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/undeformed_coordinates_JAX_3.csv", index=False)
+initial_gauss_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/initial_gauss_coordinates_3_big.csv", index=False)
+optimized_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/optimized_coordinates_JAX_3.csv", index=False)

@@ -164,9 +164,8 @@ class HyperElasticity(Problem):
 case_indicator = 166
 # method_indicator = "gradually_increase_mass_hmax_20_nu_48_"
 
-method_indicator = "gradually_increase_mass_hmax_20_nu_48_location_45_strain" #
+method_indicator = "gradually_increase_mass_hmax_10_nu_48_location_51_Untangle" #
 
-cut_loc = 45
 # method_indicator = "gradually_increase_mass_hmax_20_nu_48_" ##
 
 
@@ -198,7 +197,7 @@ data_dir = os.path.join(os.path.dirname(__file__), 'data')
 ########################################## MESH ############################################################
 
 # 1. Read the full mesh
-mesh = meshio.read("test_hmax_20.msh")
+mesh = meshio.read("test_hmax_10.msh")
 
 # 2. Inspect available cell types (optional debugging/insight)
 #    This tells you what element types were read (triangle, tetra, etc.)
@@ -232,7 +231,7 @@ volume_only_mesh = meshio.Mesh(
 volume_only_mesh.points = volume_only_mesh.points/1000
 
 mesh = Mesh(volume_only_mesh.points, volume_only_mesh.cells_dict[volume_type])
-
+points = mesh.points
 cells = volume_only_mesh.cells_dict[volume_type]
 ########################################## MESH ############################################################
 ########################################## MESH ############################################################
@@ -249,7 +248,7 @@ def left(point):
 # def y_0(point):
 #     # print(np.isclose(point[0], Lx, atol=1e-5))
 #     return np.isclose(point[1], 0, atol=1e-5)
-y_0_point = np.where(mesh.points[:,1]>=cut_loc/1000)[0]
+y_0_point = np.where(mesh.points[:,1]>=51/1000)[0]
     
 def y_0(point, ind):
     return np.isin(ind, y_0_point) 
@@ -308,7 +307,7 @@ density_target = 1000
 params = np.array(original_cood) * 0 # 0.0001
 tol = 1e-8
 # fixed_bc_mask = np.abs(mesh.points[:,1] - 0) < tol
-fixed_bc_mask = mesh.points[:, 1] >= cut_loc/1000
+fixed_bc_mask = mesh.points[:, 1] >= 51/1000
 non_fixed_indices = np.where(~fixed_bc_mask)[0]
 params = params[non_fixed_indices]
 
@@ -334,21 +333,19 @@ print("HOHO")
 # print("sol_list")
 # print(sol_list[0])
 
-def test_fn(sol_list, penalty):
+def test_fn(sol_list, Jaco_penalty):
     print('test fun')
-    
+    # print(sol_list[0])
     # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
     data_error =  np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2)/np.sum((observed_positions_2)**2) #/np.sum((observed_positions_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
-    # capped_penalty = np.minimum(1*penalty, 100 * data_error)
-    capped_penalty = 10*penalty
-    # jax.debug.print("capped_penalty: {}", capped_penalty)
-    return data_error + capped_penalty
+    capped_penalty = np.minimum(Jaco_penalty, 100 * data_error)
+    return data_error
     #Set parameter without fixed nodes.
     #Normalize
      
 def composed_fn(params):
-    Sol, penalty = fwd_pred(params)
-    return np.sum(test_fn(Sol, penalty)) #test_fn(fwd_pred(params))
+    Sol, Jaco_penalty = fwd_pred(params)
+    return np.sum(test_fn(Sol, Jaco_penalty)) #test_fn(fwd_pred(params))
 
 
 d_coord= jax.grad(composed_fn)(params)
@@ -395,6 +392,8 @@ save_sol(problem.fes[0], u_sol_opt, vtk_path_opt)
 # Define the memory threshold (e.g., 80% of total memory)
 memory_threshold = 70.0  # In percentage -- 19456
 
+mesh_for_cal = mesh
+
 print("//////////////////////////")
 print("//////////////////////////")
 print("//////////////////////////")
@@ -408,6 +407,68 @@ print("//////////////////////////")
 def tet_signed_volume(v0, v1, v2, v3):
     # Compute the signed volume of a tetrahedron.
     return onp.linalg.det(onp.column_stack((v1 - v0, v2 - v0, v3 - v0))) / 6.0
+
+def global_untangle_tet_mesh(points, cells, fixed_mask, vol_threshold=1e-6, scale_factor=1.1, max_iters=100):
+    """
+    Untangles a tetrahedral mesh while keeping fixed nodes (specified by fixed_mask) unchanged.
+    Additionally, it logs which cell (element) is modified in each iteration.
+    
+    Parameters:
+      points: (n_points, 3) array of node coordinates.
+      cells: (n_cells, 4) array of tetrahedral connectivity (indices into points).
+      fixed_mask: Boolean array of length n_points. True means the node is fixed.
+      vol_threshold: Minimum acceptable element volume.
+      scale_factor: Factor to expand a bad element.
+      max_iters: Maximum iterations to attempt untangling.
+      
+    Returns:
+      new_points: The updated node coordinates.
+      changes_per_iteration: Dictionary mapping iteration number to list of changed cell indices.
+    """
+    new_points = points.copy()
+    changes_per_iteration = {}
+    
+    for iteration in range(max_iters):
+        # Prepare accumulators for corrections and update counts per node.
+        corrections = onp.zeros_like(new_points)
+        counts = onp.zeros(new_points.shape[0], dtype=int)
+        
+        # List to record cell indices that are being corrected this iteration.
+        changed_cells = []
+        
+        # Loop over each tetrahedral element, using enumerate to get its index.
+        for cell_index, cell in enumerate(cells):
+            v0, v1, v2, v3 = new_points[cell]
+            vol = tet_signed_volume(v0, v1, v2, v3)
+            if vol < vol_threshold:
+                changed_cells.append(cell_index)
+                centroid = (v0 + v1 + v2 + v3) / 4.0
+                # Update only the free nodes of this element.
+                for idx in cell:
+                    if not fixed_mask[idx]:
+                        delta = (new_points[idx] - centroid) * (scale_factor - 1.0)
+                        corrections[idx] += delta
+                        counts[idx] += 1
+        
+        # Log the changed cells for this iteration.
+        if changed_cells:
+            changes_per_iteration[iteration] = changed_cells
+            # print(f"Iteration {iteration+1}: Changed elements (indices): {changed_cells}")
+        else:
+            # print(f"Iteration {iteration+1}: No changed elements.")
+            # print(f"Mesh untangled after {iteration+1} iterations.")
+            break
+        
+        # Apply the average correction only to free nodes.
+        for i in range(len(new_points)):
+            if counts[i] > 0 and not fixed_mask[i]:
+                new_points[i] += corrections[i] / counts[i]
+    
+    else:
+        print("Warning: Maximum iterations reached; some bad elements may remain.")
+    
+    return new_points, changes_per_iteration
+
 
 def refine_interval(density_arr, d_fail, original_density_arr, fail_count):
     """
@@ -460,11 +521,9 @@ def refine_interval(density_arr, d_fail, original_density_arr, fail_count):
 part_indicator = '_cost_history_learning_rate.csv'
 csv_file_path = f"{method_indicator}{case_indicator}{part_indicator}"
 
-mesh_for_cal = mesh
-
 with open(csv_file_path, "w", newline="") as file:
     writer = csv.writer(file)
-    writer.writerow(["Iteration", "Cost", "learning_rate", "Density", "penalty", "avg_volume", "min_volume"])  # Write header
+    writer.writerow(["Iteration", "Cost", "learning_rate", "Density", "Jaco_mean", "avg_volume", "min_volume"])  # Write header
 
     # We use a while loop over the density list so that we can insert new values if needed.
     i = 0  # index for density_arr
@@ -500,7 +559,7 @@ with open(csv_file_path, "w", newline="") as file:
 
                 # Solve FEM problem
     
-                sol_list, penalty = fwd_pred(params)
+                sol_list, Jaco_penalty = fwd_pred(params)
                 GGG = 0
             except:
                 GGG = 1
@@ -508,7 +567,7 @@ with open(csv_file_path, "w", newline="") as file:
 
             # if sol_list is None:
             if GGG == 1:
-
+                
                 # Roll back this step: undo the last parameter update
                 params = params + learning_rate * d_coord
                 # Reduce learning rate to help convergence next time
@@ -520,22 +579,40 @@ with open(csv_file_path, "w", newline="") as file:
                 print('===================================================================================================================')
                 print('===================================================================================================================')
                 print("Encountered negative J (or invalid FEM result)!")
-                print(f"Iteration {iteration}: learning_rate = {learning_rate}, current_density = {current_density}, penalty = {penalty}")
+                print(f"Iteration {iteration}: learning_rate = {learning_rate}, current_density = {current_density}, Jaco_penalty = {Jaco_penalty}")
                 print('===================================================================================================================')
                 print('===================================================================================================================')
                 print('===================================================================================================================')
                 print('===================================================================================================================')
 
                 mesh_for_cal.points[non_fixed_indices] = current_mesh.points[non_fixed_indices] + params
+
+                updated_mesh_points = onp.copy(mesh_for_cal.points)
+                # updated_mesh_points[non_fixed_indices] = updated_mesh_points[non_fixed_indices]
+                
+                onp_fixed_bc_mask = onp.copy(fixed_bc_mask)
+                new_points, changes = global_untangle_tet_mesh(updated_mesh_points, cells, onp_fixed_bc_mask, vol_threshold=1e-10, scale_factor=1.05)
+                params = new_points[non_fixed_indices] - current_mesh.points[non_fixed_indices]
+
+                # mesh_for_cal.points[non_fixed_indices] = current_mesh.points[non_fixed_indices] + params
                 volumes = [tet_signed_volume(*mesh_for_cal.points[cell]) for cell in cells]
                 avg_volume = onp.mean(volumes)
                 min_volume = onp.min(volumes)
                 print("Average volume:", avg_volume)
                 print("Minimum volume:", min_volume)
 
-                writer.writerow([iteration, 0, learning_rate, current_density,penalty, avg_volume, min_volume])  # Save immediately
+                writer.writerow([iteration, 0, learning_rate, current_density,Jaco_penalty, avg_volume, min_volume])  # Save immediately
                 file.flush()  # Ensure data is written to disk
+
             else:
+
+                volumes = [tet_signed_volume(*mesh_for_cal.points[cell]) for cell in cells]
+                avg_volume = onp.mean(volumes)
+                min_volume = onp.min(volumes)
+                print("Average volume:", avg_volume)
+                print("Minimum volume:", min_volume)
+
+
                 u_sol = np.zeros_like(sol_list[0])
 
                 np_points_temp = np.array(problem.mesh[0].points)
@@ -559,28 +636,17 @@ with open(csv_file_path, "w", newline="") as file:
 
                 # Compute cost for convergence checking
                 current_cost = np.sum((((sol_list[0] + problem.mesh[0].points) - observed_positions_2))**2)/np.sum((observed_positions_2)**2)
-                capped_penalty = 10*penalty
-                # capped_penalty = np.minimum(1*penalty, 100 * current_cost)
-                # jax.debug.print("capped_penalty: {}", capped_penalty)
-                print("capped_penalty:", capped_penalty)
-                # capped_penalty = np.minimum(penalty, 100 * current_cost)
 
-                current_cost = current_cost + capped_penalty
-                mesh_for_cal.points[non_fixed_indices] = current_mesh.points[non_fixed_indices] + params
-                volumes = [tet_signed_volume(*mesh_for_cal.points[cell]) for cell in cells]
-                avg_volume = onp.mean(volumes)
-                min_volume = onp.min(volumes)
-                print("Average volume:", avg_volume)
-                print("Minimum volume:", min_volume)
+                capped_penalty = np.minimum(Jaco_penalty, 100 * current_cost)
 
-                writer.writerow([iteration, current_cost, learning_rate, current_density, penalty, avg_volume, min_volume])  # Save immediately
+                writer.writerow([iteration, current_cost, learning_rate, current_density, Jaco_penalty, avg_volume, min_volume])  # Save immediately
                 file.flush()  # Ensure data is written to disk
                 print('===================================================================================================================')
                 print('===================================================================================================================')
                 print('===================================================================================================================')
                 print('===================================================================================================================')
             
-                print(f"Iteration {iteration}: Cost = {current_cost}, learning_rate = {learning_rate}, current_density = {current_density}, penalty = {penalty}")
+                print(f"Iteration {iteration}: Cost = {current_cost}, learning_rate = {learning_rate}, current_density = {current_density}, Jaco_penalty = {Jaco_penalty}")
 
                 print('===================================================================================================================')
                 print('===================================================================================================================')

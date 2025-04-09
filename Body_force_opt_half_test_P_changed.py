@@ -20,16 +20,16 @@ from jax_fem.utils import save_sol
 from jax_fem.generate_mesh import get_meshio_cell_type, Mesh, box_mesh_gmsh
 
 
+# Define constitutive relationship.
 class HyperElasticity_opt(Problem):
-    def __init__(self, *args,density=2.0, fixed_bc_mask = None , **kwargs):
+    def __init__(self, *args,density=2.0, **kwargs):
         self.density = density  # Make internal pressure variable
-        self.fixed_bc_mask = fixed_bc_mask
         super().__init__(*args, **kwargs)
 
     def custom_init(self):
         self.fe = self.fes[0]
         tol = 1e-8
-        # self.fixed_bc_mask = np.abs(mesh.points[:, 1] - 0) < tol  # Use NumPy here
+        self.fixed_bc_mask = np.abs(mesh.points[:, 1] - 0) < tol  # Use NumPy here
         # self.fixed_bc_mask = mesh.points[:, 1] >= -18/1000
         self.non_fixed_indices = np.where(~self.fixed_bc_mask)[0]
         self.np_points = np.array(self.mesh[0].points)
@@ -37,10 +37,13 @@ class HyperElasticity_opt(Problem):
     def get_tensor_map(self):
 
         def psi(F_tilde):
-            E = 2.842800754666559e+03
-            nu = 0.46
+            E = 1.9e4 
+            nu = 0.483
             mu = E / (2. * (1. + nu))
             kappa = E / (3. * (1. - 2. * nu))
+
+            # mu = 0.00635971757850452e6
+            # kappa = 0.315865973065724e6* 0.5
             # J = np.linalg.det(F)
             # Jinv = J**(-2. / 3.)
             # I1 = np.trace(F.T @ F)
@@ -54,16 +57,7 @@ class HyperElasticity_opt(Problem):
             I1 = np.trace(F_tilde.T @ F_tilde)
 
             energy = (mu / 2.) * (Jinv * I1 - 3.) + (kappa / 2.) * (J - 1.)**2.
-
-
-            # Add penalty if J falls below a threshold (to discourage inversion)
-            threshold = 0.5
-            penalty_weight = 1e3
-
-            # Using a smooth approximation: softplus gives a smooth penalty
-            penalty = penalty_weight * jax.nn.softplus(threshold - J)
             return energy
-            # return energy + penalty
 
         P_fn = jax.grad(psi)
 
@@ -87,8 +81,8 @@ class HyperElasticity_opt(Problem):
             density = self.density  # kg/m³, breast tissue density
             g = 9.81  # m/s², gravitational acceleration
             # val = np.array([0.0, -density*g, 0.0])
-            # val = np.array([0.0, 0.0, density*g])
             val = np.array([0.0, density*g, 0.0])
+            # val = np.array([0.0, 0.0, density*g])
             # jax.debug.print("density: {}", density)
             return val
         return mass_map
@@ -125,13 +119,13 @@ class HyperElasticity(Problem):
     def get_tensor_map(self):
 
         def psi(F):
-            E = 2.842800754666559e+03
-            nu = 0.46
+            E = 1.9e4 
+            nu = 0.483
             mu = E / (2. * (1. + nu))
             kappa = E / (3. * (1. - 2. * nu))
 
-            # jax.debug.print("mu: {}", mu)
-            # jax.debug.print("kappa: {}", kappa)
+            jax.debug.print("mu: {}", mu)
+            jax.debug.print("kappa: {}", kappa)
             # mu = 0.00635971757850452e6
             # kappa = 0.315865973065724e6 * 0.5
 
@@ -154,7 +148,7 @@ class HyperElasticity(Problem):
     # Define the source term b
     def get_mass_map(self):
         def mass_map(u, x):
-            density = 942.8238474  # kg/m³, breast tissue density
+            density = 3500  # kg/m³, breast tissue density
             g = 9.81  # m/s², gravitational acceleration
             # val = np.array([0.0, -density*g, 0.0])
             val = np.array([0.0, density*g, 0.0])
@@ -171,8 +165,8 @@ class HyperElasticity_inv(Problem):
     def get_tensor_map(self):
 
         def psi(F):
-            E = 2.842800754666559e+03
-            nu = 0.46
+            E = 1.9e4 
+            nu = 0.483
             mu = E / (2. * (1. + nu))
             kappa = E / (3. * (1. - 2. * nu))
 
@@ -198,19 +192,13 @@ class HyperElasticity_inv(Problem):
     # Define the source term b
     def get_mass_map(self):
         def mass_map(u, x):
-            density = 942.8238474  # kg/m³, breast tissue density
+            density = 3500  # kg/m³, breast tissue density
             g = 9.81  # m/s², gravitational acceleration
             # val = np.array([0.0, -density*g, 0.0])
             val = np.array([0.0, -density*g, 0.0])
             # val = np.array([0.0, 0.0, -density*g])
             return val
         return mass_map
-
-
-case_indicator = 166
-method_indicator = "negative_force_inital_hmax_20_nu_46_location_51_"
-
-
 
 # Specify mesh-related information (first-order hexahedron element).
 
@@ -229,8 +217,8 @@ data_dir = os.path.join(os.path.dirname(__file__), 'data')
 # mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 
-# meshio_mesh = meshio.read("hemi_tet4_fine.inp")
-# mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
+meshio_mesh = meshio.read("half.inp")
+mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # print(mesh.points)
 ########################################## MESH ############################################################
@@ -238,41 +226,41 @@ data_dir = os.path.join(os.path.dirname(__file__), 'data')
 ########################################## MESH ############################################################
 ########################################## MESH ############################################################
 
-# 1. Read the full mesh
-mesh = meshio.read("test_hmax_20.msh")
+# # 1. Read the full mesh
+# mesh = meshio.read("test.msh")
 
-# 2. Inspect available cell types (optional debugging/insight)
-#    This tells you what element types were read (triangle, tetra, etc.)
-print("Cell types found:", mesh.cells_dict.keys())
+# # 2. Inspect available cell types (optional debugging/insight)
+# #    This tells you what element types were read (triangle, tetra, etc.)
+# print("Cell types found:", mesh.cells_dict.keys())
 
-# 3. Extract only the volume (3D) cells
-volume_type = "tetra"      # or "hexahedron", "wedge", etc. depending on your mesh
+# # 3. Extract only the volume (3D) cells
+# volume_type = "tetra"      # or "hexahedron", "wedge", etc. depending on your mesh
 
-if volume_type not in mesh.cells_dict:
-   raise ValueError(f"No {volume_type} cells found in this mesh.")
+# if volume_type not in mesh.cells_dict:
+#     raise ValueError(f"No {volume_type} cells found in this mesh.")
 
-# Filter out only tetra cells
-volume_cells = mesh.cells_dict[volume_type]
+# # Filter out only tetra cells
+# volume_cells = mesh.cells_dict[volume_type]
 
-# (Optionally) if you want to preserve cell data (like physical groups), do so as well:
-volume_cell_data = {}
-if "gmsh:physical" in mesh.cell_data_dict:
-    volume_cell_data["gmsh:physical"] = {
-        volume_type: mesh.cell_data_dict["gmsh:physical"].get(volume_type, [])
-    }
+# # (Optionally) if you want to preserve cell data (like physical groups), do so as well:
+# volume_cell_data = {}
+# if "gmsh:physical" in mesh.cell_data_dict:
+#     volume_cell_data["gmsh:physical"] = {
+#         volume_type: mesh.cell_data_dict["gmsh:physical"].get(volume_type, [])
+#     }
 
-# 4. Create a new mesh with only volume cells
-volume_only_mesh = meshio.Mesh(
-    points=mesh.points,
-    cells=[(volume_type, volume_cells)],
-    cell_data=volume_cell_data,  # optional, if you want the physical group data
-)
-# print(volume_only_mesh.points)
-# print(volume_only_mesh.cells_dict["tetra"])
+# # 4. Create a new mesh with only volume cells
+# volume_only_mesh = meshio.Mesh(
+#     points=mesh.points,
+#     cells=[(volume_type, volume_cells)],
+#     cell_data=volume_cell_data,  # optional, if you want the physical group data
+# )
+# # print(volume_only_mesh.points)
+# # print(volume_only_mesh.cells_dict["tetra"])
 
-volume_only_mesh.points = volume_only_mesh.points/1000
+# volume_only_mesh.points = volume_only_mesh.points/1000
 
-mesh = Mesh(volume_only_mesh.points, volume_only_mesh.cells_dict[volume_type])
+# mesh = Mesh(volume_only_mesh.points, volume_only_mesh.cells_dict[volume_type])
 
 ########################################## MESH ############################################################
 ########################################## MESH ############################################################
@@ -295,10 +283,8 @@ def left(point):
 #     # print(np.isclose(point[0], Lx, atol=1e-5))
 #     return np.isclose(point[1], 0, atol=1e-5)
 
-y_0_point = np.where(mesh.points[:,1]>=51/1000)[0]
-    
-def y_0(point, ind):
-    return np.isin(ind, y_0_point) 
+def y_0(point):
+    return np.isclose(point[1], 0, atol=1e-5)
 
 # Define Dirichlet boundary values.
 def zero_dirichlet_val(point):
@@ -321,8 +307,7 @@ sol_list_2 = solver(problem_2, solver_options={'petsc_solver': {}})
 # Store the solution
 u_sol_2 = sol_list_2[0]
 print(u_sol_2)
-part_indicator = '_intial_forward.vtk'
-vtk_path_2 = os.path.join(data_dir, 'vtk', f"{method_indicator}{case_indicator}{part_indicator}")
+vtk_path_2 = os.path.join(data_dir, 'vtk', 'u_observed_config_body_half_non_post_itni.vtu')
 os.makedirs(os.path.dirname(vtk_path_2), exist_ok=True)
 save_sol(problem_2.fes[0], u_sol_2, vtk_path_2)
 
@@ -351,8 +336,7 @@ problem_inv = HyperElasticity_inv(mesh,
 
 sol_list_inv = solver(problem_inv, solver_options={'petsc_solver': {}})
 u_sol_inv = sol_list_inv[0]
-part_indicator = '_intial_guess.vtk'
-vtk_path_2 = os.path.join(data_dir, 'vtk', f"{method_indicator}{case_indicator}{part_indicator}")
+vtk_path_2 = os.path.join(data_dir, 'vtk', 'u_initial_guess_body_166_non_post_itnit.vtu')
 os.makedirs(os.path.dirname(vtk_path_2), exist_ok=True)
 save_sol(problem_inv.fes[0], u_sol_inv, vtk_path_2)
 
@@ -363,18 +347,21 @@ mesh.points = onp.array(init_guess)
 # mesh.points = onp.array((observed_positions_2 + undeformed_coord)/2)
 
 density_init = 300
-density_target = 1000 
+density_target = 3000 
+
+problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=3500)
+# params = np.zeros_like(problem.mesh[0].points)
+# params = np.ones_like(problem.mesh[0].points)
+
+
 
 params = np.array(original_cood) * 0 # 0.0001
 tol = 1e-8
-# fixed_bc_mask = np.abs(mesh.points[:,1] - 0) < tol
-fixed_bc_mask = mesh.points[:, 1] >= 51/1000
+fixed_bc_mask = np.abs(mesh.points[:,1] - 0) < tol
+# fixed_bc_mask = mesh.points[:, 1] >= -18/1000
 non_fixed_indices = np.where(~fixed_bc_mask)[0]
 params = params[non_fixed_indices]
 
-problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=1000, fixed_bc_mask=fixed_bc_mask)
-# params = np.zeros_like(problem.mesh[0].points)
-# params = np.ones_like(problem.mesh[0].points)
 
 print(params)
 print("HAHA")
@@ -385,21 +372,20 @@ sol_list = fwd_pred(params)
 # print("sol_list")
 # print(sol_list[0])
 
-def test_fn(sol_list, penalty):
+def test_fn(sol_list):
     print('test fun')
-    
+    # print(sol_list[0])
     # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
-    data_error =  np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2)/np.sum((observed_positions_2)**2) #/np.sum((observed_positions_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
-    # capped_penalty = np.minimum(1*penalty, 100 * data_error)
-    capped_penalty = 10*penalty
-    # jax.debug.print("capped_penalty: {}", capped_penalty)
-    return data_error + capped_penalty
+    return np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2)  #/np.sum((observed_positions_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
     #Set parameter without fixed nodes.
     #Normalize
      
 def composed_fn(params):
-    Sol, penalty = fwd_pred(params)
-    return np.sum(test_fn(Sol, penalty)) #test_fn(fwd_pred(params))
+    Sol = fwd_pred(params)
+    if Sol == None:
+        return None
+    else:
+        return np.sum(test_fn(Sol)) #test_fn(fwd_pred(params))
 
 
 d_coord= jax.grad(composed_fn)(params)
@@ -413,10 +399,10 @@ print(d_coord)
 params = np.array(original_cood) * 0
 params = params[non_fixed_indices]
 observed_positions_2_non_fixed = observed_positions_2[non_fixed_indices]
-start_learning_rate = 0.001
+start_learning_rate = 0.01
 learning_rate = start_learning_rate
 max_iterations = 500
-tolerance = 1e-3
+tolerance = 1e-4
 # current_mesh_dummy = mesh
 current_mesh = mesh
 relax_flag = 0
@@ -424,19 +410,18 @@ cost_history = []
 density_init = 300
 density_target = 1000 
 density_arr = [200, 300, 400, 500, 600, 700, 750, 800, 850, 900, 950, 1000]
-# density_arr = [800, 850, 942.8238474]
-density_arr = [942.8238474]
+density_arr = [200, 400, 600, 800 , 1000]
+density_arr = [3500]
 density_gap = 200
 step_roll_back_flag = 0
 negative_J_count = 0
-problem = HyperElasticity_opt(current_mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=density_init, fixed_bc_mask=fixed_bc_mask)
+problem = HyperElasticity_opt(current_mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=density_init)
 
 fwd_pred = ad_wrapper(problem)
 start = time.time()
-Sol, penalty = fwd_pred(params)
+sol_list = fwd_pred(params)
 u_sol_opt = sol_list[0]
-part_indicator = '_before_opt.vtk'
-vtk_path_opt = os.path.join(data_dir, 'vtk', f"{method_indicator}{case_indicator}{part_indicator}")
+vtk_path_opt = os.path.join(data_dir, 'vtk', 'u_pressure_opt_with_JAX_body_before_opt_half_non_post_itni.vtu')
 os.makedirs(os.path.dirname(vtk_path_opt), exist_ok=True)
 save_sol(problem.fes[0], u_sol_opt, vtk_path_opt)
 
@@ -452,7 +437,7 @@ print("//////////////////////////")
 print("//////////////////////////")
 print("//////////////////////////")
 print("//////////////////////////")
-i_vtk_count = 0
+
 
 for BC_i in range(len(density_arr)):
     problem.density = density_arr[BC_i]
@@ -463,24 +448,28 @@ for BC_i in range(len(density_arr)):
         # params = params * 0
 
         # Step 1: Compute gradient
-        try:
-            # Compute gradient and normalize if necessary.
-            d_coord = jax.grad(composed_fn)(params)
-            grad_norm = np.linalg.norm(d_coord)
-            if grad_norm > 1e-8:
-                d_coord = d_coord / grad_norm
+        d_coord = jax.grad(composed_fn)(params)
+        # What array is occupying the memory 
+        grad_norm = np.linalg.norm(d_coord)
+        if grad_norm > 1e-8:
+            d_coord = d_coord / grad_norm
 
-            # Update parameters
-            params = params - learning_rate * d_coord
+        params  = params - learning_rate * d_coord
 
-            # Solve FEM problem
- 
-            Sol, penalty = fwd_pred(params)
-            GGG = 0
-        except:
-            GGG = 1
+        # updated_mesh_points = onp.copy(current_mesh.points)
+        # updated_mesh_points[non_fixed_indices] = updated_mesh_points[non_fixed_indices] + params
 
-        if GGG == 1:
+        # current_mesh = current_mesh_dummy
+        # current_mesh.points = updated_mesh_points
+
+        # del problem, fwd_pred, sol_list # Replace with variables no longer needed
+        # gc.collect()
+
+        # problem.mesh[0].points = updated_mesh_points
+            # Step 5: Solve the FEM problem with the updated geometry
+        
+        sol_list = fwd_pred(params)
+        if sol_list == None:
             print("J < 0!!!")
             print("J < 0!!!")
             # print("J < 0!!!")
@@ -505,22 +494,6 @@ for BC_i in range(len(density_arr)):
             #     print('Relax Relax Relax Relax')
 
         else:
-
-            u_sol = np.zeros_like(sol_list[0])
-
-            np_points_temp = np.array(problem.mesh[0].points)
-            reconstructed_param_temp = np.zeros_like(np_points_temp)
-            reconstructed_param_temp = reconstructed_param_temp.at[non_fixed_indices].set(params)
-            part_indicator = '_ain_'
-            vtk_path = os.path.join(data_dir, 'vtk', f"{method_indicator}/{method_indicator}{case_indicator}{part_indicator}{i_vtk_count}.vtk")
-            os.makedirs(os.path.dirname(vtk_path), exist_ok=True)
-            # save_sol(problem.fes[0], u_sol, vtk_path)
-            mesh_temp = problem.mesh[0]
-            mesh_temp.points = mesh_temp.points + onp.array(reconstructed_param_temp)
-            save_sol(mesh_temp, u_sol, vtk_path)
-            i_vtk_count = i_vtk_count + 1
-
-
             negative_J_count = 0
             learning_rate = learning_rate * 1.05
 
@@ -564,6 +537,8 @@ for BC_i in range(len(density_arr)):
             #memory_threshold = 70.0  # In percentage -- 19456
 
 
+
+
         # # Check system memory usage
         memory_info = psutil.virtual_memory()
         if memory_info.percent > memory_threshold:
@@ -575,9 +550,7 @@ for BC_i in range(len(density_arr)):
 
 
 # Save cost history to a CSV file
-part_indicator = '_cost_history_learning_rate.csv'
-
-with open(f"{method_indicator}{case_indicator}{part_indicator}", "w", newline="") as file:
+with open("cost_history_learning_rate_body_half_non_post_itni.csv", "w", newline="") as file:
     writer = csv.writer(file)
     writer.writerow(["Iteration", "Cost"])  # Write header
     writer.writerows(cost_history)         # Write data
@@ -600,11 +573,10 @@ current_mesh.points = updated_mesh_points
 problem.mesh[0].points = updated_mesh_points
     # Step 5: Solve the FEM problem with the updated geometry
 params = params * 0
-Sol, penalty = fwd_pred(params)
+sol_list = fwd_pred(params)
 
 u_sol_opt = sol_list[0]
-part_indicator = '_after_optimization.vtu'
-vtk_path_opt = os.path.join(data_dir, 'vtk', f"{method_indicator}{case_indicator}{part_indicator}")
+vtk_path_opt = os.path.join(data_dir, 'vtk', 'u_pressure_opt_with_JAX_body_half_non_post_itni_param_up.vtu')
 os.makedirs(os.path.dirname(vtk_path_opt), exist_ok=True)
 save_sol(problem.fes[0], u_sol_opt, vtk_path_opt)
 
@@ -615,13 +587,6 @@ optimized_df = pd.DataFrame(current_mesh.points, columns=["X", "Y", "Z"])
 
 
 # Save to CSV files
-addr = '/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_JAX/'
-
-part_indicator = '_undeformed_coordinates.csv'
-undeformed_df.to_csv(f"{addr}{method_indicator}{case_indicator}{part_indicator}", index=False)
-
-part_indicator = '_initial_gauss.csv'
-initial_gauss_df.to_csv(f"{addr}{method_indicator}{case_indicator}{part_indicator}", index=False)
-
-part_indicator = '_optimized_coordinates.csv'
-optimized_df.to_csv(f"{addr}{method_indicator}{case_indicator}{part_indicator}", index=False)
+undeformed_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/undeformed_coordinates_JAX_body_half_non_post_itni.csv", index=False)
+initial_gauss_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/initial_gauss_coordinates_body_half_non_post_itni.csv", index=False)
+optimized_df.to_csv("/home/gusdh/jax-fem/demos/hyperelasticity/jax-fem/demos/prac_hy/data/By_SciPy/optimized_coordinates_body_half_non_post_itni.csv", index=False)
