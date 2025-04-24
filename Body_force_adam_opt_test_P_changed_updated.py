@@ -608,7 +608,7 @@ with open(csv_file_path, "w", newline="") as file:
             # Compute new density to try: halfway between the previous successful density and the current one.
             new_density = refine_interval(density_arr, current_density, original_density_arr, fail_count)
             i = new_density.index(current_density) - 1
-            step_roll_back_flag = 0
+            # step_roll_back_flag = 0
             step_size_current = 0.0001
             density_arr = new_density
             continue  # do not advance i

@@ -57,11 +57,11 @@ class HyperElasticity_opt(Problem):
 
 
             # Add penalty if J falls below a threshold (to discourage inversion)
-            threshold = 0.5
-            penalty_weight = 1e3
+            # threshold = 0.5
+            # penalty_weight = 1e3
 
             # Using a smooth approximation: softplus gives a smooth penalty
-            penalty = penalty_weight * jax.nn.softplus(threshold - J)
+            # penalty = penalty_weight * jax.nn.softplus(threshold - J)
             return energy
             # return energy + penalty
 

@@ -164,7 +164,7 @@ class HyperElasticity(Problem):
 case_indicator = 166
 # method_indicator = "gradually_increase_mass_hmax_20_nu_48_"
 
-method_indicator = "gradually_increase_mass_hmax_20_nu_48_location_45_strain" #
+method_indicator = "gradually_increase_mass_hmax_10_nu_48_location_45_strain_E_tilde_Lambda_0_no_strain_i_0_include_" #
 
 cut_loc = 45
 # method_indicator = "gradually_increase_mass_hmax_20_nu_48_" ##
@@ -198,7 +198,7 @@ data_dir = os.path.join(os.path.dirname(__file__), 'data')
 ########################################## MESH ############################################################
 
 # 1. Read the full mesh
-mesh = meshio.read("test_hmax_20.msh")
+mesh = meshio.read("test_hmax_10.msh")
 
 # 2. Inspect available cell types (optional debugging/insight)
 #    This tells you what element types were read (triangle, tetra, etc.)
@@ -340,7 +340,7 @@ def test_fn(sol_list, penalty):
     # jax.debug.print("cost func: {}", np.sum((sol_list[0] - u_sol_2)**2))
     data_error =  np.sum((((sol_list[0]+problem.mesh[0].points) - observed_positions_2))**2)/np.sum((observed_positions_2)**2) #/np.sum((observed_positions_2)**2)) #np.sum((sol_list[0] - u_sol_2)**2)
     # capped_penalty = np.minimum(1*penalty, 100 * data_error)
-    capped_penalty = 10*penalty
+    capped_penalty = penalty
     # jax.debug.print("capped_penalty: {}", capped_penalty)
     return data_error + capped_penalty
     #Set parameter without fixed nodes.
@@ -348,6 +348,7 @@ def test_fn(sol_list, penalty):
      
 def composed_fn(params):
     Sol, penalty = fwd_pred(params)
+    penalty = penalty * 0
     return np.sum(test_fn(Sol, penalty)) #test_fn(fwd_pred(params))
 
 
@@ -464,7 +465,7 @@ mesh_for_cal = mesh
 
 with open(csv_file_path, "w", newline="") as file:
     writer = csv.writer(file)
-    writer.writerow(["Iteration", "Cost", "learning_rate", "Density", "penalty", "avg_volume", "min_volume"])  # Write header
+    writer.writerow(["Iteration", "Cost", "learning_rate", "Density", "penalty", "avg_volume", "min_volume",'Negative_Jaco_Flag'])  # Write header
 
     # We use a while loop over the density list so that we can insert new values if needed.
     i = 0  # index for density_arr
@@ -501,6 +502,7 @@ with open(csv_file_path, "w", newline="") as file:
                 # Solve FEM problem
     
                 sol_list, penalty = fwd_pred(params)
+                penalty = penalty * 0
                 GGG = 0
             except:
                 GGG = 1
@@ -533,7 +535,7 @@ with open(csv_file_path, "w", newline="") as file:
                 print("Average volume:", avg_volume)
                 print("Minimum volume:", min_volume)
 
-                writer.writerow([iteration, 0, learning_rate, current_density,penalty, avg_volume, min_volume])  # Save immediately
+                writer.writerow([iteration, 0, learning_rate, current_density,penalty, avg_volume, min_volume, GGG])  # Save immediately
                 file.flush()  # Ensure data is written to disk
             else:
                 u_sol = np.zeros_like(sol_list[0])
@@ -559,28 +561,29 @@ with open(csv_file_path, "w", newline="") as file:
 
                 # Compute cost for convergence checking
                 current_cost = np.sum((((sol_list[0] + problem.mesh[0].points) - observed_positions_2))**2)/np.sum((observed_positions_2)**2)
-                capped_penalty = 10*penalty
+                penalty_term = penalty
                 # capped_penalty = np.minimum(1*penalty, 100 * current_cost)
                 # jax.debug.print("capped_penalty: {}", capped_penalty)
-                print("capped_penalty:", capped_penalty)
+                print("penalty_term:", penalty_term)
                 # capped_penalty = np.minimum(penalty, 100 * current_cost)
 
-                current_cost = current_cost + capped_penalty
-                mesh_for_cal.points[non_fixed_indices] = current_mesh.points[non_fixed_indices] + params
+                current_cost = current_cost
+                mesh_for_cal.points[non_fixed_indices] 
+                current_mesh.points[non_fixed_indices] + params
                 volumes = [tet_signed_volume(*mesh_for_cal.points[cell]) for cell in cells]
                 avg_volume = onp.mean(volumes)
                 min_volume = onp.min(volumes)
                 print("Average volume:", avg_volume)
                 print("Minimum volume:", min_volume)
 
-                writer.writerow([iteration, current_cost, learning_rate, current_density, penalty, avg_volume, min_volume])  # Save immediately
+                writer.writerow([iteration, current_cost, learning_rate, current_density, penalty_term, avg_volume, min_volume, GGG])  # Save immediately
                 file.flush()  # Ensure data is written to disk
                 print('===================================================================================================================')
                 print('===================================================================================================================')
                 print('===================================================================================================================')
                 print('===================================================================================================================')
             
-                print(f"Iteration {iteration}: Cost = {current_cost}, learning_rate = {learning_rate}, current_density = {current_density}, penalty = {penalty}")
+                print(f"Iteration {iteration}: Cost = {current_cost}, learning_rate = {learning_rate}, current_density = {current_density}, penalty = {penalty_term}")
 
                 print('===================================================================================================================')
                 print('===================================================================================================================')
@@ -589,10 +592,10 @@ with open(csv_file_path, "w", newline="") as file:
 
                 # Convergence check (you can adjust this condition as needed)
                 if current_density == density_arr[-1]:
-                    if iteration > 0 and np.abs(current_cost) < tolerance_last: 
+                    if iteration >= 0 and np.abs(current_cost) < tolerance_last: 
                         print("Converged at target density!")
                         break
-                elif iteration > 0 and np.abs(current_cost) < tolerance_relax:
+                elif iteration >= 0 and np.abs(current_cost) < tolerance_relax:
                     if current_density in original_density_arr:
                         fail_count = 0
                     print("Converged at this density!")
@@ -633,7 +636,7 @@ with open(csv_file_path, "w", newline="") as file:
             # Compute new density to try: halfway between the previous successful density and the current one.
             new_density = refine_interval(density_arr, current_density, original_density_arr, fail_count)
             i = new_density.index(current_density) - 1
-            step_roll_back_flag = 0
+            # step_roll_back_flag = 0
             learning_rate = 0.0001
             density_arr = new_density
             continue  # do not advance i

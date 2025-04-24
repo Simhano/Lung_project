@@ -59,6 +59,7 @@ class HyperElasticity(Problem):
             return -internal_pressure * normal
         def z_up_traction(u, x):
             normal = np.array([0.0, 0.0, 1.0])
+            jax.debug.print("normal: {}", normal)
             return -internal_pressure * normal
         return [x_left_traction, y_down_traction, y_up_traction, z_down_traction, z_up_traction]
 
@@ -136,7 +137,7 @@ problem = HyperElasticity(mesh,
                           dirichlet_bc_info=dirichlet_bc_info,
                           location_fns=location_fns)
 # Solve the defined problem.    
-sol_list = solver(problem, solver_options={'petsc_solver': {}})
+sol_list,_ = solver(problem, solver_options={'petsc_solver': {}})
 
 # Store the solution to local file.
 vtk_path = os.path.join(data_dir, f'vtk/u.vtu')
