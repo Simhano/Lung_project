@@ -30,9 +30,7 @@ class HyperElasticity(Problem):
         # pull out the 8 node‐IDs for each cell
         cells8   = self.mesh[0].cells[cell_ids]  # (n_faces, 8)
 
-
         hex8_face_nodes = self.fes[0].face_inds
-
 
         # pick exactly the 4 node‐IDs for each boundary face
         local_nodes   = hex8_face_nodes[face_ids]                  # (n_faces,4)
@@ -83,34 +81,6 @@ class HyperElasticity(Problem):
         # register for your surface map
         self.internal_vars_surfaces = [unit_n0]
 
-        # jax.debug.print("unit_n0: {}", unit_n0)
-        # selected_face_shape_grads_1 = []
-        # for boundary_inds in self.boundary_inds_list:
-        #     s_shape_grads_1 = []
-
-        #     for fe in self.fes:
-        #         # (num_selected_faces, num_face_quads, num_nodes, dim), (num_selected_faces, num_face_quads)
-        #         face_shape_grads_physical_1, _ = fe.get_face_shape_grads(boundary_inds)  
-        #         s_shape_grads_1.append(face_shape_grads_physical_1)
-        #     # (num_selected_faces, num_face_quads, num_nodes + ..., dim)
-        #     s_shape_grads_1 = np.concatenate(s_shape_grads_1, axis=2)
-
-        #     selected_face_shape_grads_1.append(s_shape_grads_1)
-
-
-
-        # # b_inds = self.boundary_inds_list[0]
-        # face_shape_grads = selected_face_shape_grads_1[0]
-        # t1 = face_shape_grads[:,:, 0, :]   # (n_faces, n_quads, dim)
-        # t2 = face_shape_grads[:,:, 1, :]
-        # n0 = np.cross(t1, t2)      # (n_faces, n_quads, dim)
-        # unit_n0 = n0 / np.linalg.norm(n0, axis=-1, keepdims=True)
-
-        # # length of this list must equal number of Neumann regions:
-        # self.internal_vars_surfaces = [unit_n0]
-
-
-
 
 
 
@@ -160,15 +130,36 @@ ele_type = 'HEX8'
 cell_type = get_meshio_cell_type(ele_type)
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
 Lx, Ly, Lz = 1., 1., 1.
-meshio_mesh = box_mesh_gmsh(Nx=3,
-                            Ny=3,
-                            Nz=3,
+meshio_mesh = box_mesh_gmsh(Nx=20,
+                            Ny=20,
+                            Nz=20,
                             Lx=Lx,
                             Ly=Ly,
                             Lz=Lz,
                             data_dir=data_dir,
                             ele_type=ele_type)
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
+
+
+
+# ele_type = 'TET10'
+# cell_type = get_meshio_cell_type(ele_type)
+# data_dir = os.path.join(os.path.dirname(__file__), 'data')
+# Lx, Ly, Lz = 1., 1., 1.
+# Nx, Ny, Nz = 5, 5, 5
+# meshio_mesh = box_mesh_gmsh(Nx=Nx,
+#                        Ny=Ny,
+#                        Nz=Nz,
+#                        Lx=Lx,
+#                        Ly=Ly,
+#                        Lz=Lz,
+#                        data_dir=data_dir,
+#                        ele_type=ele_type)
+# mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
+
+
+
+
 
 
 # Define boundary locations.
@@ -190,19 +181,6 @@ def z_down(point):
 def z_up(point):
     return np.isclose(point[2], Lz, atol=1e-5)
 
-def pressure_face(point):
-    x, y, z = point  # unpack the coordinates
-
-    # use np.isclose for each face test
-    on_left   = np.isclose(x, 0.0, atol=1e-5)
-    # on_y_low  = np.isclose(y, 0.0, atol=1e-5)
-    # on_y_high = np.isclose(y, Ly,  atol=1e-5)
-    # on_z_low  = np.isclose(z, 0.0, atol=1e-5)
-    # on_z_high = np.isclose(z, Lz,  atol=1e-5)
-
-    # combine with element‐wise OR
-    return on_left #| on_y_low | on_y_high | on_z_low | on_z_high
-
 
 # Define Dirichlet boundary values.
 def zero_dirichlet_val(point):
@@ -219,11 +197,11 @@ def dirichlet_val_x3(point):
             (point[2] - 0.5) * np.cos(np.pi / 3.) - point[2]) / 2.
 
 
-mask = ((mesh.points[:,0] < 0.01) 
-        | (mesh.points[:,1] < 0.01)  
-        | (mesh.points[:,2] < 0.01)
-        | (mesh.points[:,1] > 0.9)
-        | (mesh.points[:,2] > 0.9))
+mask = ((mesh.points[:,0] < 0.00001) 
+        | (mesh.points[:,1] < 0.000001)  
+        | (mesh.points[:,2] < 0.000001)
+        | (mesh.points[:,1] > 0.99999)
+        | (mesh.points[:,2] > 0.99999))
 
 y_0_point = np.where(mask)[0]
     
