@@ -91,7 +91,7 @@ class HyperElasticity_opt(Problem):
             g = 9.81  # m/s², gravitational acceleration
             # val = np.array([0.0, -density*g, 0.0])
             # val = np.array([0.0, 0.0, density*g])
-            val = np.array([0.0, density*g, 0.0])
+            val = np.array([0.0, density*g])
             # jax.debug.print("density: {}", density)
             return val
         return mass_map
@@ -133,8 +133,8 @@ class HyperElasticity_opt(Problem):
         u_grads_0 = np.sum(u_grads_0, axis=2) # (num_cells, num_quads, vec, dim) 
 
 
-        I = np.eye(3)                      # (dim, dim)
-        I = I.reshape((1, 1, 3, 3))      # (1, 1, dim, dim)
+        I = np.eye(2)                      # (dim, dim)
+        I = I.reshape((1, 1, 2, 2))      # (1, 1, dim, dim)
 
         F = u_grads + I                      # (n_cells, n_quads, dim, dim)
 
@@ -150,13 +150,13 @@ class HyperElasticity_opt(Problem):
         
         #    'cqji, cqjk -> cqi k'
         C_tilde = np.einsum('cqji, cqjk -> cqik',
-                            F_0, F_0)      # (n_cells, n_quads, dim, dim)
+                            F_tilde, F_tilde)      # (n_cells, n_quads, dim, dim)
 
         # trace over the last two dims → (n_cells, n_quads)
         trace_C = np.trace(C_tilde, axis1=2, axis2=3)
 
         # volumetric strain
-        eps_v = 0.5 * (trace_C - 3)        # shape (n_cells, n_quads)
+        eps_v = 0.5 * (trace_C - 2)        # shape (n_cells, n_quads)
 
         # square and then average over *all* cells & quads
         strain_sq_mean = np.mean(eps_v**2)
@@ -204,7 +204,7 @@ class HyperElasticity(Problem):
             g = 9.81  # m/s², gravitational acceleration
             # val = np.array([0.0, -density*g, 0.0])
             # val = np.array([0.0, 0.0, density*g])
-            val = np.array([0.0, density*g, 0.0])
+            val = np.array([0.0, density*g])
             return val
         return mass_map
 
@@ -248,7 +248,7 @@ class HyperElasticity_inv(Problem):
             density = 942.8238474  # kg/m³, breast tissue density
             g = 9.81  # m/s², gravitational acceleration
             # val = np.array([0.0, -density*g, 0.0])
-            val = np.array([0.0, -density*g, 0.0])
+            val = np.array([0.0, -density*g])
             # val = np.array([0.0, 0.0, -density*g])
             return val
         return mass_map
@@ -274,7 +274,7 @@ method_indicator = (
     + str(tolerance_last)
     + "_lr_"
     + str(start_learning_rate)
-    + "_cap_inf_direct_target"
+    + "_cap_inf_2D_"
 )
 
 
@@ -365,14 +365,14 @@ def y_0(point, ind):
 def zero_dirichlet_val(point):
     return 0.
 
-dirichlet_bc_info = [[y_0] *3, # Results in [left, left, left] + [right, right, right] 
-                     [0, 1, 2], # Components: [u_x, u_y, u_z] 
-                     [zero_dirichlet_val] * 3]
+dirichlet_bc_info = [[y_0] *2, # Results in [left, left, left] + [right, right, right] 
+                     [0, 1], # Components: [u_x, u_y, u_z] 
+                     [zero_dirichlet_val] * 2]
 
 
 problem_2 = HyperElasticity_inv(mesh,
-                            vec=3,
-                            dim=3,
+                            vec=2,
+                            dim=2,
                             ele_type=ele_type,
                             dirichlet_bc_info=dirichlet_bc_info
 )
@@ -391,8 +391,8 @@ save_sol(problem_2.fes[0], u_sol_2, vtk_path_2)
 mesh.points = mesh.points + onp.array(u_sol_2)
 
 problem_2 = HyperElasticity(mesh,
-                            vec=3,
-                            dim=3,
+                            vec=2,
+                            dim=2,
                             ele_type=ele_type,
                             dirichlet_bc_info=dirichlet_bc_info
 )
@@ -433,7 +433,7 @@ fixed_bc_mask = mesh.points[:, 1] >= cut_loc/1000
 non_fixed_indices = np.where(~fixed_bc_mask)[0]
 params = params[non_fixed_indices]
 
-problem = HyperElasticity_opt(mesh, vec=3, dim=3, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=942.8238474, fixed_bc_mask=fixed_bc_mask)
+problem = HyperElasticity_opt(mesh, vec=2, dim=2, ele_type=ele_type, dirichlet_bc_info=dirichlet_bc_info, density=942.8238474, fixed_bc_mask=fixed_bc_mask)
 # params = np.zeros_like(problem.mesh[0].points)
 # params = np.ones_like(problem.mesh[0].points)
 
@@ -495,7 +495,6 @@ relax_flag = 0
 # original_density_arr = [50 ,100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 942.8238474]
 original_density_arr = [150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 942.8238474]
 original_density_arr = [300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 942.8238474]
-original_density_arr = [942.8238474]
 # original_density_arr = [942.8238474]
 # original_density_arr = [500, 550, 600, 650, 700, 750, 800, 850, 900, 942.8238474]
 # original_density_arr = onp.arange(50, 943, 1)
